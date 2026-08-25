@@ -429,6 +429,12 @@ async function viewScan(){
         satir('sonuç', d.sonuc || '—'),
         d.aciklama ? satir('açıklama', d.aciklama) : null,
         d.ornek_tweet ? '\nörnek tweet: @' + d.ornek_tweet.hesap + ' — ' + d.ornek_tweet.metin : null,
+        d.cozumleme_hatasi ? satir('neden okunamadı', d.cozumleme_hatasi) : null,
+        d.ornek_alanlar ? '\naktörün döndürdüğü alanlar:\n  ' + d.ornek_alanlar.join(', ') : null,
+        (d.yazar_alanlari && d.yazar_alanlari.length)
+          ? 'yazar alanları:\n  ' + d.yazar_alanlari.join(', ') : null,
+        d.ham_ornek ? '\nham kayıt:\n' + Object.entries(d.ham_ornek)
+          .map(([k,v]) => '  ' + k + ' = ' + v).join('\n') : null,
       ].filter(Boolean);
       $('#jMsg').innerHTML = `<div class="diag">${esc(lines.join('\n'))}</div>`;
     }catch(e){
@@ -531,6 +537,9 @@ async function viewStats(){
       ${row('toplam çağrı', o.calls)}
       ${row('son 24 saatteki çağrı', o.calls_24h)}
       ${row('son çağrı', o.last_call_at? ago(o.last_call_at)+' önce' : '—')}
+      ${row('veritabanı', o.db_kind==='postgresql'
+        ? '<span class="up">PostgreSQL — kalıcı</span>'
+        : `<span class="down">${esc(o.db_kind||'?')} — GEÇİCİ, her deploy'da silinir</span>`)}
       ${row('en yüksek kat', o.best_multiple? o.best_multiple.toFixed(1)+'x' : '—')}
     </tbody></table></div></div>
 

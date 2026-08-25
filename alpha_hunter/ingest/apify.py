@@ -224,13 +224,25 @@ class ApifySource:
         out["kayit_sayisi"] = len(items)
         out["aciklama"] = self.last_detail
         if items:
-            out["ornek_alanlar"] = sorted(items[0].keys())[:25]
+            first = items[0] if isinstance(items[0], dict) else {}
+            out["ornek_alanlar"] = sorted(first.keys())[:30]
+            author = _author_of(first)
+            out["yazar_alanlari"] = sorted(author.keys())[:20] if author else []
             t = _normalise(items[0])
             out["cozumlenebildi"] = t is not None
             if t:
                 out["ornek_tweet"] = {
                     "hesap": t.handle, "tarih": t.posted_at.isoformat(),
                     "metin": t.text[:120],
+                }
+            else:
+                # Neden okuyamadigimizi ve ham kaydin bir parcasini goster --
+                # bir sonraki turda tahmin yurutmeye gerek kalmasin.
+                out["cozumleme_hatasi"] = _why_normalise_failed(first)
+                out["ham_ornek"] = {
+                    k: (str(v)[:90] if not isinstance(v, (dict, list)) else
+                        f"<{type(v).__name__}: {sorted(v.keys())[:8] if isinstance(v, dict) else len(v)}>")
+                    for k, v in list(first.items())[:18]
                 }
         out["sonuc"] = "calisiyor" if items else "aktor sonuc dondurmedi"
         return out
@@ -325,15 +337,79 @@ def _parse_dt(v: Any) -> datetime | None:
         return None
 
 
+def _dig(d: dict, *path: str):
+    """Ic ice sozlukten guvenli okuma: _dig(x, "core", "user_results", "result")."""
+    cur: object = d
+    for key in path:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(key)
+    return cur
+
+
+def _author_of(item: dict) -> dict:
+    """Yazar nesnesini bilinen butun yerlerde arar.
+
+    Aktorler X'in GraphQL yanitini bazen oldugu gibi geciriyor; o zaman yazar
+    core.user_results.result.legacy altinda gomulu geliyor.
+    """
+    for cand in (
+        item.get("author"),
+        item.get("user"),
+        _dig(item, "core", "user_results", "result", "legacy"),
+        _dig(item, "core", "user_results", "result"),
+        _dig(item, "user_results", "result", "legacy"),
+        _dig(item, "tweet", "author"),
+        _dig(item, "legacy", "user"),
+    ):
+        if isinstance(cand, dict) and cand:
+            return cand
+    return {}
+
+
+def _handle_of(item: dict) -> str:
+    author = _author_of(item)
+    raw = (
+        _pick(item, "username", "userName", "screen_name", "handle", default=None)
+        or _pick(author, "userName", "username", "screen_name", "handle", default=None)
+    )
+    if not raw:
+        # Son care: tweet URL'sinden cikar (x.com/<handle>/status/<id>)
+        url = str(_pick(item, "url", "twitterUrl", "tweetUrl", default="") or "")
+        parts = [p for p in url.split("/") if p]
+        if "status" in parts:
+            i = parts.index("status")
+            if i > 0:
+                raw = parts[i - 1]
+    return str(raw or "").lstrip("@").lower()
+
+
+def _why_normalise_failed(item: dict) -> str | None:
+    """Cozumleme neden basarisiz oldu? Teshis ekraninda gosterilir."""
+    if not isinstance(item, dict):
+        return f"kayit sozluk degil ({type(item).__name__})"
+    if item.get("noResults"):
+        return "aktor 'noResults' isaretli bos kayit dondurdu"
+    if not _handle_of(item):
+        return "kullanici adi bulunamadi (author.userName / username / URL)"
+    tid = _pick(item, "id", "id_str", "tweetId", "rest_id", "conversationId", default=None)
+    url = _pick(item, "url", "twitterUrl", "tweetUrl", default=None)
+    if not tid and not url:
+        return "tweet kimligi bulunamadi (id / rest_id / url)"
+    raw_dt = _pick(item, "createdAt", "created_at", "date", "timestamp", "time", default=None)
+    if raw_dt is None:
+        return "tarih alani bulunamadi (createdAt / created_at / date)"
+    if _parse_dt(raw_dt) is None:
+        return f"tarih cozulemedi: {str(raw_dt)[:40]!r}"
+    return None
+
+
 def _normalise(item: dict, source: str = "apify") -> RawTweet | None:
     if not isinstance(item, dict) or item.get("noResults"):
         return None
 
-    author = item.get("author") or item.get("user") or {}
-    handle = str(
-        _pick(item, "username", "userName", "screen_name", default=None)
-        or _pick(author, "userName", "username", "screen_name", default="")
-    ).lstrip("@").lower()
+    author = _author_of(item)
+    handle = _handle_of(item)
 
     tweet_id = str(_pick(item, "id", "id_str", "tweetId", "rest_id", default="") or "")
     url = _pick(item, "url", "twitterUrl", "tweetUrl")
@@ -342,11 +418,15 @@ def _normalise(item: dict, source: str = "apify") -> RawTweet | None:
     if not tweet_id or not handle:
         return None
 
-    posted = _parse_dt(_pick(item, "createdAt", "created_at", "date", "timestamp"))
+    posted = _parse_dt(_pick(item, "createdAt", "created_at", "date", "timestamp", "time"))
     if posted is None:
         return None
 
-    text = str(_pick(item, "fullText", "full_text", "text", "content", default="") or "")
+    text = str(
+        _pick(item, "fullText", "full_text", "text", "content", "rawContent", default="")
+        or _dig(item, "legacy", "full_text")
+        or ""
+    )
 
     urls: list[str] = []
     ent = item.get("entities") or {}

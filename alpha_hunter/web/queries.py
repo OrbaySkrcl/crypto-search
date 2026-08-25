@@ -225,6 +225,8 @@ def overview(session: Session) -> dict:
             select(func.count(Call.id)).where(Call.called_at >= utcnow() - timedelta(hours=24))
         ) or 0,
         "last_call_at": last_call.isoformat() if last_call else None,
+        "db_kind": "postgresql" if settings.is_postgres else "sqlite",
+        "db_persistent": settings.is_postgres,
         "chains": settings.chain_list,
         "window_days": settings.score_window_days,
         "win_multiple": settings.win_multiple,

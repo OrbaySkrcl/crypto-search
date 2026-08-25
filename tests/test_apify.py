@@ -238,3 +238,59 @@ async def test_diagnose_without_token(db, monkeypatch):
     out = await ApifySource(FakeApifyHttp(), token=None).diagnose()
     assert out["token_var"] is False
     assert "APIFY_TOKEN" in out["sonuc"]
+
+
+# ------------------------------------------------ cozumleme teshisi
+def test_why_normalise_failed_names_the_missing_field():
+    from alpha_hunter.ingest.apify import _why_normalise_failed
+
+    assert "kullanici adi" in _why_normalise_failed(
+        {"id": "1", "createdAt": "2024-01-01T00:00:00Z"}
+    )
+    assert "tarih alani" in _why_normalise_failed({"id": "1", "author": {"userName": "x"}})
+    assert "tarih cozulemedi" in _why_normalise_failed(
+        {"id": "1", "author": {"userName": "x"}, "createdAt": "dun"}
+    )
+    assert "tweet kimligi" in _why_normalise_failed(
+        {"author": {"userName": "x"}, "createdAt": "2024-01-01T00:00:00Z"}
+    )
+    # saglam kayitta hata yok
+    assert _why_normalise_failed(_tweet_item(0)) is None
+
+
+def test_normalise_handles_nested_graphql_author():
+    """Bazi aktorler X'in GraphQL yanitini oldugu gibi geciriyor."""
+    from alpha_hunter.ingest.apify import _normalise
+
+    t = _normalise({
+        "rest_id": "1826",
+        "full_text": "CA: test",
+        "created_at": "Tue Aug 20 12:00:00 +0000 2024",
+        "core": {"user_results": {"result": {"legacy": {"screen_name": "godofgem"}}}},
+    })
+    assert t is not None
+    assert t.handle == "godofgem"
+
+
+def test_handle_recovered_from_url_when_author_missing():
+    from alpha_hunter.ingest.apify import _normalise
+
+    t = _normalise({
+        "id": "1826",
+        "url": "https://x.com/godofgem/status/1826",
+        "text": "x",
+        "createdAt": "2024-08-20T12:00:00Z",
+    })
+    assert t is not None and t.handle == "godofgem"
+
+
+async def test_diagnose_explains_unparseable_records(db):
+    """Kayit geliyor ama okunamiyorsa: neden okunamadigi + alan adlari."""
+    bozuk = [{"tweetText": "merhaba", "postedOn": "dun", "writer": "godofgem"}]
+    out = await ApifySource(FakeApifyHttp(items=bozuk)).diagnose("godofgem")
+
+    assert out["kayit_sayisi"] == 1
+    assert out["cozumlenebildi"] is False
+    assert out["cozumleme_hatasi"]
+    assert "tweetText" in out["ornek_alanlar"]
+    assert "ham_ornek" in out
