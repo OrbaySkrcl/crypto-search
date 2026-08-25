@@ -75,6 +75,13 @@ class CallOutcome(str, enum.Enum):
     INVALID = "invalid"      # likidite esigi altinda / fiyat cozulemedi
 
 
+class JobStatus(str, enum.Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+
+
 class Tier(str, enum.Enum):
     S = "S"
     A = "A"
@@ -385,3 +392,45 @@ class Alert(Base):
     delivered: Mapped[bool] = mapped_column(Boolean, default=False)
 
     __table_args__ = (UniqueConstraint("kind", "dedupe_key", name="uq_alert_kind_key"),)
+
+
+class Job(Base):
+    """Arka plan is kuyrugu.
+
+    Manuel hesap taramasi (backfill) dakikalar surebilir; ne web istegini ne de
+    Telegram mesajini bekletebiliriz. Her iki arayuz de buraya is birakir,
+    zamanlayicidaki isci tek tek calistirir.
+    """
+
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)      # 'backfill'
+    target: Mapped[str] = mapped_column(String(128))               # handle
+    params: Mapped[dict | None] = mapped_column(JSON)              # {"days": 60}
+    source: Mapped[str] = mapped_column(String(16), default="web") # web | telegram | cli
+
+    status: Mapped[JobStatus] = mapped_column(
+        Enum(JobStatus, native_enum=False, length=16), default=JobStatus.QUEUED, index=True
+    )
+    progress: Mapped[str | None] = mapped_column(String(256))
+    result: Mapped[dict | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # Telegram'dan geldiyse sonucu buraya bildir
+    notify_chat_id: Mapped[str | None] = mapped_column(String(48))
+
+    __table_args__ = (Index("ix_job_status_created", "status", "created_at"),)
+
+
+class AppState(Base):
+    """Kucuk kalici anahtar-deger deposu (ornegin Telegram update offseti)."""
+
+    __tablename__ = "app_state"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)

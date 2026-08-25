@@ -582,6 +582,32 @@ python -m alpha_hunter inspect <b>hesapadi</b></pre></div>
 🔗 tweet · dexscreener</pre></div>
   <p>Daha çok alarm istersen <code>ALERT_MIN_ALPHA_SCORE</code>'u düşür (örn. <code>50</code>)
   — ama kalite düşer.</p>
+
+  <h4>Bota komut vermek</h4>
+  <p>Bot sadece mesaj göndermiyor, komut da alıyor. Telegram'da <strong>/</strong> yazınca
+  kısayol menüsü açılır; <code>/start</code> yazarsan butonlu menü gelir.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Komut</th><th>Ne yapar</th></tr></thead>
+    <tbody>
+      <tr><td><code>/tara hesapadi 60</code></td><td><strong>En çok kullanacağın komut.</strong>
+        Hesabı son 60 gün için tarar, puanlar ve bitince haber verir.</td></tr>
+      <tr><td><code>/top</code></td><td>En yüksek alfa skorlu hesaplar</td></tr>
+      <tr><td><code>/son</code></td><td>Son 24 saatteki çağrılar</td></tr>
+      <tr><td><code>/hesap hesapadi</code></td><td>Bir hesabın detayı</td></tr>
+      <tr><td><code>/token &lt;CA&gt;</code></td><td>Kontratı inceler, kimlerin hangi sırada paylaştığını gösterir</td></tr>
+      <tr><td><code>/isler</code></td><td>Tarama işlerinin durumu</td></tr>
+      <tr><td><code>/durum</code></td><td>Sistem durumu</td></tr>
+    </tbody></table></div>
+  <div class="note"><div class="h">Bot sadece sana cevap verir</div>
+  <p>Komutlar yalnızca <code>TELEGRAM_CHAT_ID</code>'de tanımlı sohbetten kabul edilir.
+  Botun adını bulan başkası tarama kuyruğuna iş bırakamaz.</p></div>
+
+  <h4>Panodan hesap taratmak</h4>
+  <p>Panoda <strong>Hesap tara</strong> sekmesi var: hesap adını ve kaç gün geriye
+  bakılacağını yaz, başlat. Tarama arka planda çalışır — sayfayı kapatabilirsin.
+  Aynı sayfadaki iş listesinden durumunu izlersin; bitince alfa skoru, isabet oranı
+  ve medyan katı orada görünür.</p>
+  <p>Ücretsiz fiyat API'si yavaş olduğu için 60 günlük bir hesap birkaç dakika sürebilir.</p>
 </section>
 
 <!-- ================================================================ 5 -->
@@ -596,6 +622,14 @@ python -m alpha_hunter inspect <b>hesapadi</b></pre></div>
       <tr><td><strong>Deploy logları tamamen boş</strong></td><td>Build aşamasında patladı — deploy hiç başlamadı</td>
         <td>Railway'de <strong>Deployments</strong> → ilgili dağıtım → <strong>Build Logs</strong>
         sekmesine bak, <em>Deploy Logs</em>'a değil. Gerçek hata orada yazar.</td></tr>
+      <tr><td><strong>Loglarda <code>sqlite3.OperationalError</code></strong></td>
+        <td>PostgreSQL bağlı değil — bot konteyner içindeki dosyaya yazıyor</td>
+        <td><strong>Acil:</strong> veri her deploy'da siliniyor demektir. Railway'de
+        <strong>+ Create → Database → Add PostgreSQL</strong> ekle.</td></tr>
+      <tr><td><strong>Sürekli <code>hicbir ornek yanit vermedi</code></strong></td>
+        <td>Nitter örnekleri ölü, hiç veri gelmiyor</td>
+        <td><code>APIFY_TOKEN</code> gir ve <code>TWEET_SOURCES=apify,nitter</code> yap.
+        Nitter tek başına çalışmıyor.</td></tr>
       <tr><td>Panoda hep 0 çağrı</td><td>Tweet kaynağı çalışmıyor</td>
         <td>Loglarda <code>hicbir kaynak … dondurmedi</code> ara. <code>APIFY_TOKEN</code> doğru mu?</td></tr>
       <tr><td><code>nitter ornegi basarisiz</code></td><td>Nitter örnekleri düşmüş</td>

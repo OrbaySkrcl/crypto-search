@@ -10,6 +10,7 @@ from ..db.session import init_db_when_ready
 from .alerts import alert_fresh_calls, send_leaderboard
 from .enrich import run_enrich
 from .ingest import run_ingest
+from .jobs import claim_next, run_backfill_job
 from .score import blacklist_spammers, detect_clusters, run_scoring
 
 log = logging.getLogger(__name__)
@@ -40,6 +41,75 @@ async def _score_tick() -> None:
     blacklist_spammers()
     detect_clusters()
     await asyncio.get_running_loop().run_in_executor(None, run_scoring)
+
+
+async def _job_worker(stop: asyncio.Event) -> None:
+    """Manuel tarama isteklerini teker teker calistirir.
+
+    Tek isci: backfill agir bir is, paralel calistirmak ucretsiz fiyat API'sinin
+    limitini yakar ve butun taramalar yavaslar.
+    """
+    from ..db.session import session_scope
+    from ..notify.bot import announce_job_result
+
+    await asyncio.sleep(15)
+    while not stop.is_set():
+        job_id = None
+        try:
+            with session_scope() as s:
+                job = claim_next(s)
+                if job is not None:
+                    job_id = job.id
+        except Exception:
+            log.exception("is kuyrugu okunamadi")
+
+        if job_id is None:
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=10)
+            except TimeoutError:
+                pass
+            continue
+
+        try:
+            await run_backfill_job(job_id)
+        except Exception:
+            log.exception("is calistirilamadi: #%s", job_id)
+        try:
+            await announce_job_result(job_id)
+        except Exception:
+            log.exception("is sonucu bildirilemedi: #%s", job_id)
+
+
+async def _telegram_loop(stop: asyncio.Event) -> None:
+    """Telegram komutlarini uzun yoklama ile dinler.
+
+    Webhook kurmak alan adi ve sertifika ister; uzun yoklama Railway'de
+    hicbir ek yapilandirma olmadan calisir.
+    """
+    from ..http import HttpClient
+    from ..notify.bot import COMMANDS, process_updates
+    from ..notify.telegram import TelegramNotifier
+
+    notifier = TelegramNotifier()
+    if not notifier.token:
+        log.info("TELEGRAM_BOT_TOKEN yok, bot dinleyicisi kapali")
+        return
+    if not settings.telegram_chat_id:
+        log.warning("TELEGRAM_CHAT_ID yok -- bot komutlari guvenlik icin reddedilecek")
+
+    # Uzun yoklama 25sn beklediginden istemcinin zaman asimi daha uzun olmali
+    async with HttpClient(timeout=45.0) as http:
+        if await notifier.set_commands(COMMANDS, http):
+            log.info("telegram kisayol menusu kuruldu (%d komut)", len(COMMANDS))
+        log.info("telegram bot dinleniyor")
+        while not stop.is_set():
+            try:
+                await process_updates(notifier, http)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("telegram yoklama hatasi")
+                await asyncio.sleep(10)
 
 
 async def _ensure_db(stop: asyncio.Event) -> None:
@@ -111,6 +181,8 @@ async def run_forever() -> None:
         asyncio.create_task(
             _loop("leaderboard", lambda: send_leaderboard(15), 24 * 3600, stop, jitter=300)
         ),
+        asyncio.create_task(_job_worker(stop)),
+        asyncio.create_task(_telegram_loop(stop)),
     ]
     # Web panosu ayni surecte kalkar -> Railway'de tek servis yeter
     web_server = None

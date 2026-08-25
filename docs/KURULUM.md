@@ -280,6 +280,34 @@ telefonuna şöyle bir mesaj düşer:
 Eşiği değiştirmek istersen `ALERT_MIN_ALPHA_SCORE` değişkenini düşür
 (örn. `50`) — daha çok alarm gelir ama kalite düşer.
 
+### Bota komut vermek
+
+Bot sadece mesaj göndermiyor, komut da alıyor. Telegram'da **/** yazınca
+kısayol menüsü açılır. `/start` yazarsan butonlu bir menü de gelir.
+
+| Komut | Ne yapar |
+|---|---|
+| `/tara hesapadi 60` | **En çok kullanacağın komut.** Hesabı son 60 gün için tarar, puanlar ve bitince haber verir |
+| `/top` | En yüksek alfa skorlu hesaplar |
+| `/son` | Son 24 saatteki çağrılar |
+| `/hesap hesapadi` | Bir hesabın detayı |
+| `/token <CA>` | Kontratı inceler, kimlerin hangi sırada paylaştığını gösterir |
+| `/isler` | Tarama işlerinin durumu |
+| `/durum` | Sistem durumu |
+| `/yardim` | Bütün komutlar |
+
+> Bot yalnızca senin sohbetinden komut kabul eder. Botun adını bulan başkası
+> kullanamaz — güvenlik sınırı `TELEGRAM_CHAT_ID`.
+
+### Panodan hesap taratmak
+
+Panoda **Hesap tara** sekmesi var: hesap adını ve kaç gün geriye bakılacağını
+yazıp başlat. Tarama arka planda çalışır, sayfayı kapatabilirsin. Aynı sayfadaki
+iş listesinden durumunu izlersin — bitince alfa skoru, isabet oranı ve medyan
+katı orada görünür.
+
+Ücretsiz fiyat API'si yavaş olduğu için 60 günlük bir hesap birkaç dakika sürebilir.
+
 ---
 
 # BÖLÜM 5 — Sorun giderme
@@ -287,6 +315,8 @@ Eşiği değiştirmek istersen `ALERT_MIN_ALPHA_SCORE` değişkenini düşür
 | Belirti | Sebep | Çözüm |
 |---|---|---|
 | **Deploy logları tamamen boş** | Build aşamasında patladı, deploy hiç başlamadı | Railway'de **Deployments → ilgili dağıtım → Build Logs** sekmesine bak (Deploy Logs değil). Gerçek hata orada. |
+| **Loglarda `sqlite3.OperationalError`** | PostgreSQL bağlı değil, bot konteyner içindeki dosyaya yazıyor | Railway'de veritabanı eklentisi var mı bak. Yoksa **+ Create → Database → Add PostgreSQL**. **Veri her deploy'da siliniyor demektir — acil.** |
+| **Loglarda sürekli `hicbir ornek yanit vermedi`** | Nitter örnekleri ölü, veri gelmiyor | `APIFY_TOKEN` gir ve `TWEET_SOURCES=apify,nitter` yap. Nitter tek başına çalışmıyor. |
 | Panoda hep 0 çağrı | Tweet kaynağı çalışmıyor | Railway loglarında `hicbir kaynak ... veri dondurmedi` ara. `APIFY_TOKEN` doğru mu? |
 | Loglarda `nitter ornegi basarisiz` | Nitter örnekleri düşmüş | Normal. `TWEET_SOURCES=apify,nitter` yaptıysan Apify devralır. |
 | Telegram mesajı gelmiyor | Token/chat_id yanlış, veya henüz 65+ hesap yok | Önce `ALERT_MIN_ALPHA_SCORE=0` yapıp test et, sonra geri al. |

@@ -164,6 +164,8 @@ tek servis yeter. Üç görünüm var:
 - **Liderlik tablosu** — hesaplar alfa skoruna göre sıralı, her sütunun ne demek
   olduğu sayfanın altında açıklanıyor. Hesaba tıklayınca tüm çağrı geçmişi açılır.
 - **Son çağrılar** — canlı akış. Süreye ve minimum alfa skoruna göre filtrelenir.
+- **Hesap tara** — bir Twitter hesabı ve gün sayısı gir, geçmişi taransın. Tarama
+  arka planda çalışır; sayfayı kapatabilirsin, iş listesinden durumunu izlersin.
 - **İstatistik** — sistem durumu, çağrı sonuçları, tier dağılımı.
 
 Pano 60 saniyede bir kendini yeniler.
@@ -172,8 +174,33 @@ Pano 60 saniyede bir kendini yeniler.
 > bulduğun alfa hesapları herkesin eline geçer. Railway'de mutlaka doldur.
 
 JSON API'si de var (kendi araçlarını bağlamak istersen):
-`/api/leaderboard`, `/api/calls`, `/api/account/{handle}`, `/api/overview`.
-İnteraktif dokümantasyon: `/api/docs`
+`/api/leaderboard`, `/api/calls`, `/api/account/{handle}`, `/api/overview`,
+`POST /api/backfill`, `/api/jobs`. İnteraktif dokümantasyon: `/api/docs`
+
+---
+
+## Telegram botu
+
+Bot hem alarm gönderir hem komut alır. Telegram'da **/** yazınca kısayol menüsü çıkar.
+
+| Komut | Ne yapar |
+|---|---|
+| `/tara hesapadi 60` | Hesabı geçmişe dönük tarar ve puanlar (bitince haber verir) |
+| `/top [n]` | En yüksek alfa skorlu hesaplar |
+| `/son [saat]` | Son çağrılar |
+| `/hesap hesapadi` | Bir hesabın detayı ve son çağrıları |
+| `/token <CA>` | Kontratı inceler + kimlerin hangi sırada paylaştığını gösterir |
+| `/isler` | Tarama işlerinin durumu |
+| `/durum` | Sistem durumu |
+| `/yardim` | Bütün komutlar |
+
+Ayrıca butonlu bir menü var — `/start` yazınca çıkar.
+
+> **Güvenlik:** bot yalnızca `TELEGRAM_CHAT_ID`'de tanımlı sohbetten komut kabul eder.
+> Botun kullanıcı adını bulan başkası tarama kuyruğuna iş bırakamaz.
+
+Bot **uzun yoklama** (long polling) ile çalışır — webhook, alan adı veya sertifika
+gerekmez, Railway'de olduğu gibi ayağa kalkar.
 
 ---
 
@@ -291,7 +318,7 @@ Bu bir araştırma aracıdır, yatırım tavsiyesi değildir.
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q          # 67 test
+pytest -q          # 123 test
 ruff check .
 ```
 

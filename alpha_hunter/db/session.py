@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -22,6 +23,10 @@ _SessionFactory: sessionmaker[Session] | None = None
 # Railway saglik kontrolu duser.
 _db_ok: bool = False
 _db_checked_at: float = 0.0
+
+# Zamanlayici ve web sunucusu semayi ayni anda kurmaya calisabilir; SQLite'ta
+# bu "table ... already exists" hatasi verir. Tek seferde bir tane calissin.
+_init_lock = threading.Lock()
 
 
 def get_engine() -> Engine:
@@ -76,10 +81,18 @@ def session_scope() -> Iterator[Session]:
 
 def init_db(drop: bool = False) -> None:
     eng = get_engine()
-    if drop:
-        log.warning("Tum tablolar siliniyor")
-        Base.metadata.drop_all(eng)
-    Base.metadata.create_all(eng)
+    with _init_lock:
+        if drop:
+            log.warning("Tum tablolar siliniyor")
+            Base.metadata.drop_all(eng)
+        # checkfirst=True varsayilan olsa da es zamanli iki cagri yarisabilir;
+        # kilit + yeniden deneme ikisini de kapatir.
+        try:
+            Base.metadata.create_all(eng, checkfirst=True)
+        except Exception as exc:
+            if "already exists" not in str(exc).lower():
+                raise
+            log.debug("sema zaten kurulmus (es zamanli cagri): %s", exc)
     log.info("Sema hazir: %s", settings.database_url.split("@")[-1])
 
 

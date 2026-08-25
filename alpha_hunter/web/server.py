@@ -10,12 +10,13 @@ import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from ..config import settings
 from ..db.session import db_status, healthcheck, init_db_when_ready, session_scope
+from ..pipeline import jobs as jobq
 from . import queries
 
 log = logging.getLogger(__name__)
@@ -122,6 +123,47 @@ def create_app() -> FastAPI:
             return JSONResponse(
                 queries.recent_calls(s, hours=hours, limit=limit, min_alpha=min_alpha)
             )
+
+    # ------------------------------------------------------- manuel tarama
+    @app.post("/api/backfill", dependencies=[Depends(_check_auth)])
+    def api_backfill(payload: dict = Body(...)) -> JSONResponse:
+        """Bir Twitter hesabini gecmise donuk taramak icin is kuyruguna birakir.
+
+        Tarama dakikalar surer, o yuzden istek beklemez: is kimligi doner,
+        durumu /api/jobs uzerinden izlenir.
+        """
+        handle = str(payload.get("handle") or "").strip()
+        raw_days = payload.get("days", 60)
+        norm = jobq.normalise_handle(handle)
+        if not norm:
+            raise HTTPException(
+                status_code=422,
+                detail="gecerli bir Twitter kullanici adi gir (harf, rakam, alt cizgi; en fazla 15)",
+            )
+        job, msg = jobq.enqueue_backfill(
+            norm, jobq.clamp_days(raw_days), source="web"
+        )
+        if job is None:
+            raise HTTPException(status_code=422, detail=msg)
+        with session_scope() as s:
+            fresh = s.get(type(job), job.id)
+            data = jobq.job_to_dict(fresh) if fresh else jobq.job_to_dict(job)
+        return JSONResponse({"message": msg, "job": data}, status_code=202)
+
+    @app.get("/api/jobs", dependencies=[Depends(_check_auth)])
+    def api_jobs(limit: int = Query(20, ge=1, le=100)) -> JSONResponse:
+        with session_scope() as s:
+            return JSONResponse(jobq.list_jobs(s, limit=limit))
+
+    @app.get("/api/jobs/{job_id}", dependencies=[Depends(_check_auth)])
+    def api_job(job_id: int) -> JSONResponse:
+        from ..db.models import Job
+
+        with session_scope() as s:
+            job = s.get(Job, job_id)
+            if job is None:
+                raise HTTPException(status_code=404, detail=f"is #{job_id} bulunamadi")
+            return JSONResponse(jobq.job_to_dict(job))
 
     @app.get("/health")
     def health() -> JSONResponse:

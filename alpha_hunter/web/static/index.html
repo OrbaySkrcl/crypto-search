@@ -97,6 +97,27 @@
   .kv div{background:var(--panel2);border-radius:7px;padding:9px 11px}
   .kv .k{color:var(--dim2);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
   .kv .v{font-family:ui-monospace,Menlo,monospace;font-size:16px;margin-top:2px}
+  .form{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:16px;max-width:640px}
+  .fld{display:flex;flex-direction:column;gap:5px}
+  .fld label{font-size:11px;color:var(--dim2);text-transform:uppercase;letter-spacing:.6px}
+  .fld input{background:var(--panel2);color:var(--tx);border:1px solid var(--line);
+    border-radius:7px;padding:9px 11px;font-size:14px;font-family:inherit}
+  .fld input:focus{outline:none;border-color:var(--acc)}
+  .fld .pre{position:relative}
+  .fld .pre span{position:absolute;left:11px;top:50%;transform:translateY(-50%);
+    color:var(--dim2);font-size:14px;pointer-events:none}
+  .fld .pre input{padding-left:26px}
+  .go{background:var(--acc);color:#06080d;border:none;border-radius:7px;padding:10px 20px;
+    font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .go:hover{filter:brightness(1.1)}
+  .go:disabled{opacity:.5;cursor:not-allowed}
+  .jst{font-size:11px;padding:2px 8px;border-radius:5px;font-weight:700;white-space:nowrap}
+  .jst.queued{background:rgba(255,179,64,.14);color:var(--warn)}
+  .jst.running{background:rgba(91,141,255,.16);color:var(--acc)}
+  .jst.done{background:rgba(49,209,138,.16);color:var(--up)}
+  .jst.failed{background:rgba(255,92,114,.14);color:var(--down)}
+  .ok{background:rgba(49,209,138,.1);border:1px solid rgba(49,209,138,.3);color:#9ef0c8;
+    padding:11px 14px;border-radius:8px;margin:0 16px 14px;font-size:13px}
   .err{background:rgba(255,92,114,.1);border:1px solid rgba(255,92,114,.3);color:#ffb3bd;
     padding:11px 14px;border-radius:8px;margin-bottom:14px;font-size:13px}
   @media(max-width:640px){.legend dl{grid-template-columns:1fr}.legend dt{margin-top:6px}}
@@ -117,6 +138,7 @@
 <nav>
   <button data-v="board" class="on">Liderlik tablosu</button>
   <button data-v="calls">Son çağrılar</button>
+  <button data-v="tara">Hesap tara</button>
   <button data-v="stats">İstatistik</button>
 </nav>
 
@@ -346,6 +368,113 @@ async function openAcc(handle){
   }catch(e){ showErr(e.message); }
 }
 
+// ------------------------------------------------------------------ tarama
+let JOBTIMER = null;
+
+async function viewScan(){
+  $('#view').innerHTML = `<div class="card">
+    <div class="card-head"><h2>Hesap tara</h2>
+      <span class="hint">bir Twitter hesabının geçmişini tarat ve puanlat</span></div>
+    <form class="form" id="scanForm">
+      <div class="fld" style="flex:1;min-width:200px;max-width:300px">
+        <label for="jHandle">Twitter hesabı</label>
+        <div class="pre"><span>@</span>
+          <input id="jHandle" placeholder="hesapadi" autocomplete="off" spellcheck="false" required>
+        </div>
+      </div>
+      <div class="fld" style="width:130px">
+        <label for="jDays">Kaç gün geriye</label>
+        <input id="jDays" type="number" value="60" min="1" max="365">
+      </div>
+      <button class="go" type="submit" id="jGo">Taramayı başlat</button>
+    </form>
+    <div id="jMsg"></div>
+    <div style="padding:0 16px 14px;color:var(--dim2);font-size:12.5px;line-height:1.6">
+      Tarama arka planda çalışır — sayfayı kapatabilirsin. Ücretsiz fiyat API'si yavaş
+      olduğu için 60 günlük bir hesap birkaç dakika sürebilir. Telegram'dan da
+      başlatabilirsin: <code style="background:var(--panel2);padding:1px 5px;border-radius:4px">/tara hesapadi 60</code>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <div class="card-head"><h2>Tarama işleri</h2>
+      <span class="hint" id="jHint"></span></div>
+    <div id="jList"></div>
+  </div>`;
+
+  $('#scanForm').onsubmit = async e => {
+    e.preventDefault();
+    const handle = $('#jHandle').value.trim().replace(/^@/, '');
+    const days = parseInt($('#jDays').value, 10) || 60;
+    if(!handle) return;
+    $('#jGo').disabled = true;
+    $('#jMsg').innerHTML = '';
+    try{
+      const r = await fetch('/api/backfill', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({handle, days}),
+      });
+      const d = await r.json();
+      if(!r.ok){ throw new Error(d.detail || 'istek reddedildi'); }
+      $('#jMsg').innerHTML = `<div class="ok">${esc(d.message)}</div>`;
+      $('#jHandle').value = '';
+      await loadJobs();
+    }catch(e){
+      $('#jMsg').innerHTML = `<div class="err" style="margin:0 16px 14px">${esc(e.message)}</div>`;
+    }finally{
+      $('#jGo').disabled = false;
+    }
+  };
+  await loadJobs();
+}
+
+async function loadJobs(){
+  let rows = [];
+  try{ rows = await api('/api/jobs?limit=25'); }catch(e){ return; }
+  const el = $('#jList');
+  if(!el) return;
+
+  if(!rows.length){
+    el.innerHTML = `<div class="empty"><b>Henüz tarama yapılmadı</b>
+      <p>Yukarıdaki forma bir hesap adı yazıp başlat. Sistem o hesabın son N gündeki
+      tüm tweetlerini çeker, içindeki kontrat adreslerini bulur ve her birinin
+      tweet anındaki fiyatını zincirden doğrular.</p></div>`;
+  } else {
+    const lbl = {queued:'sırada', running:'çalışıyor', done:'bitti', failed:'hata'};
+    el.innerHTML = `<div class="scroll"><table>
+      <thead><tr><th>#</th><th>hesap</th><th class="num">gün</th><th>durum</th>
+        <th>sonuç</th><th class="num">alfa</th><th class="num">isabet</th>
+        <th class="num">medyan</th><th>kaynak</th></tr></thead>
+      <tbody>${rows.map(j=>{
+        const r = j.result || {};
+        let sonuc = '<span class="dim">—</span>';
+        if(j.status==='running') sonuc = `<span class="dim">${esc(j.progress||'')}</span>`;
+        else if(j.status==='failed') sonuc = `<span class="down">${esc((j.error||'').slice(0,60))}</span>`;
+        else if(j.status==='done' && !r.found) sonuc = '<span class="dim">CA içeren tweet yok</span>';
+        else if(j.status==='done') sonuc = `<span class="tier ${r.tier}">${r.tier}</span> ${r.n_calls} çağrı`;
+        return `<tr>
+          <td class="num dim">${j.id}</td>
+          <td>${j.status==='done'&&r.found
+            ? `<a href="#" onclick="openAcc('${esc(j.target)}');return false">@${esc(j.target)}</a>`
+            : '@'+esc(j.target)}</td>
+          <td class="num">${j.days??'—'}</td>
+          <td><span class="jst ${j.status}">${lbl[j.status]||j.status}</span></td>
+          <td>${sonuc}</td>
+          <td class="num">${r.alpha_score!=null?`<b>${r.alpha_score}</b>`:'—'}</td>
+          <td class="num">${r.win_rate!=null?`${pct(r.win_rate)} <span class="dim">(${r.n_wins}/${r.n_evaluated})</span>`:'—'}</td>
+          <td class="num ${mcls(r.median_multiple)}">${r.median_multiple!=null?fmtX(r.median_multiple):'—'}</td>
+          <td class="dim">${esc(j.source)}</td>
+        </tr>`;
+      }).join('')}</tbody></table></div>`;
+  }
+
+  const busy = rows.filter(j=>j.status==='queued'||j.status==='running').length;
+  const hint = $('#jHint');
+  if(hint) hint.textContent = busy ? `${busy} iş sürüyor — 5 saniyede bir yenileniyor` : '';
+  clearTimeout(JOBTIMER);
+  if(busy && VIEW==='tara') JOBTIMER = setTimeout(loadJobs, 5000);
+}
+
 // ---------------------------------------------------------------- istatistik
 async function viewStats(){
   const o = await api('/api/overview');
@@ -386,6 +515,7 @@ async function render(){
     await loadStrip();
     if(VIEW==='board') await viewBoard();
     else if(VIEW==='calls') await viewCalls();
+    else if(VIEW==='tara') await viewScan();
     else await viewStats();
     showErr('');
   }catch(e){ showErr(e.message); }
@@ -395,8 +525,12 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); VIEW=b.dataset.v; render();
 });
-setInterval(()=>{ LEFT--; $('#refresh').textContent = `${LEFT}sn içinde yenilenecek`;
-  if(LEFT<=0) render(); }, 1000);
+setInterval(()=>{
+  // Tarama sekmesinde tam yenileme formu sifirlar; orada yalnizca is listesi tazelenir
+  if(VIEW==='tara'){ $('#refresh').textContent = 'işler canlı izleniyor'; LEFT=60; return; }
+  LEFT--; $('#refresh').textContent = `${LEFT}sn içinde yenilenecek`;
+  if(LEFT<=0) render();
+}, 1000);
 render();
 </script>
 </body>
