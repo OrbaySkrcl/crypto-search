@@ -466,3 +466,51 @@ async def test_diagnose_shows_declared_schema_fields(db):
     assert "twitterHandles" in out["sema_alanlari"]
     assert out["sema_hatasi"] is None
     assert out["semadan_uretilen_girdi"]["twitterHandles"] == ["godofgem"]
+
+
+# ------------------------------------------------------- aktor logu
+class LoggingHttp(FakeApifyHttp):
+    """Bos sonuc donduren ve kendi logunda sebebini yazan aktor."""
+
+    LOG = (
+        "INFO  Starting actor\n"
+        "INFO  Searching for from:elonmusk\n"
+        "WARN  Rental period expired, running in limited mode\n"
+        "INFO  Found 0 tweets\n"
+    )
+
+    def __init__(self):
+        super().__init__(items=[{"noResults": True}])
+
+    async def get(self, url, **kw):
+        if url.endswith("/log"):
+            return self.LOG
+        return await super().get(url, **kw)
+
+
+async def test_actor_log_is_read_when_nothing_comes_back(db):
+    """Aktor 'bulamadim' dediginde sebebini kendi logunda yazar."""
+    src = ApifySource(LoggingHttp())
+    [t async for t in src.user_timeline("elonmusk", SINCE, 10)]
+
+    assert src.last_run_log is not None
+    assert "Rental period expired" in src.last_run_log
+    assert "aktor logu" in (src.last_detail or "")
+
+
+async def test_diagnose_surfaces_log_and_console_link(db):
+    out = await ApifySource(LoggingHttp()).diagnose("elonmusk")
+
+    assert out["kayit_sayisi"] == 0
+    assert "Rental period expired" in (out["aktor_logu"] or "")
+    assert out["apify_konsol"].startswith("https://console.apify.com/actors/runs/")
+
+
+async def test_log_is_not_fetched_on_success(db):
+    """Basarili calismada gereksiz istek yapilmamali."""
+    http = FakeApifyHttp()
+    src = ApifySource(http)
+    [t async for t in src.user_timeline("testuser", SINCE, 10)]
+
+    assert not any(u.endswith("/log") for u in http.urls())
+    assert src.last_run_log is None

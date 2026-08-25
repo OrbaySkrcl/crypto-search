@@ -440,6 +440,10 @@ async function viewScan(){
           .map(r => `  ${(r.bicim+'').padEnd(20)} kayıt ${r.kayit}` +
                     (r.cozulen!=null?` · çözülen ${r.cozulen}`:'') +
                     (r.not?`  (${r.not})`:'')).join('\n') : null,
+        d.aktor_ucretlendirme ? satir('aktör ücretlendirme', d.aktor_ucretlendirme) : null,
+        d.aktor_logu ? '\naktörün kendi logu (son satırlar):\n' +
+          d.aktor_logu.split('\n').map(l => '  ' + l).join('\n') : null,
+        d.apify_konsol ? '\napify konsolunda bu çalışma:\n  ' + d.apify_konsol : null,
         d.oneri ? '\nöneri:\n  ' + d.oneri : null,
       ].filter(Boolean);
       $('#jMsg').innerHTML = `<div class="diag">${esc(lines.join('\n'))}</div>`;

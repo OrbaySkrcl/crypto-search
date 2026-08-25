@@ -238,6 +238,11 @@ class ApifySource:
         self.token = token or settings.apify_token
         self.actor = (actor or settings.apify_actor).replace("/", "~")
         self.last_detail: str | None = None
+        self.last_run_log: str | None = None
+        self.last_run_id: str | None = None
+        self.actor_pricing: str | None = None
+        self.actor_title: str | None = None
+        self.actor_trial_days = None
 
     async def available(self) -> bool:
         if not self.token:
@@ -269,6 +274,13 @@ class ApifySource:
         data = (info or {}).get("data") if isinstance(info, dict) else None
         if not data:
             return ({}, f"aktor bulunamadi: {self.actor.replace('~', '/')}")
+        # Ucretlendirme modelini sakla -- kiralama sorunu teshiste isimize yarar
+        prices = data.get("pricingInfos") or []
+        if prices:
+            son = prices[-1]
+            self.actor_pricing = son.get("pricingModel") or "?"
+            self.actor_trial_days = son.get("trialMinutes")
+        self.actor_title = data.get("title") or data.get("name")
 
         build_id = (
             ((data.get("taggedBuilds") or {}).get("latest") or {}).get("buildId")
@@ -291,6 +303,25 @@ class ApifySource:
             return (schema.get("properties") or {}, None)
         except Exception as exc:
             return ({}, f"sema okunamadi: {exc}")
+
+    async def run_log(self, run_id: str, lines: int = 18) -> str | None:
+        """Aktorun kendi calisma logunu okur.
+
+        Aktor 'sonuc yok' dediginde SEBEBI burada yazar: proxy yok, oran
+        siniri, giris gerekiyor, kiralama bitmis vb. Tahmin yurutmeye son.
+        """
+        if not self.token:
+            return None
+        text = await self.http.get(
+            f"{_BASE}/actor-runs/{run_id}/log",
+            bucket="apify",
+            headers={"Authorization": f"Bearer {self.token}"},
+            expect_json=False, max_retries=1, timeout=30.0,
+        )
+        if not isinstance(text, str) or not text.strip():
+            return None
+        rows = [r for r in text.strip().split("\n") if r.strip()]
+        return "\n".join(rows[-lines:])
 
     async def _run(self, payload: dict, limit: int) -> list[dict]:
         """Aktoru ASENKRON calistirir: baslat -> bitmesini bekle -> sonucu al.
@@ -326,6 +357,7 @@ class ApifySource:
 
         run = started["data"]
         run_id, dataset_id = run.get("id"), run.get("defaultDatasetId")
+        self.last_run_id = run_id
         deadline = time.monotonic() + settings.apify_max_wait_seconds
         status = run.get("status", "READY")
         while status in ("READY", "RUNNING"):
@@ -357,9 +389,13 @@ class ApifySource:
         if not isinstance(items, list):
             self.last_detail = "sonuc kumesi okunamadi"
             return []
-        if _is_empty_marker(items):
-            # Aktor "bu arama hicbir sey bulmadi" diyor -- bos liste gibi davran
-            self.last_detail = "aktor 'noResults' dondurdu (arama sonuc bulamadi)"
+        if _is_empty_marker(items) or not items:
+            # Aktor "hicbir sey bulamadim" diyor. SEBEBINI kendi logunda yazar.
+            self.last_run_log = await self.run_log(run_id)
+            self.last_detail = "aktor sonuc bulamadi"
+            if self.last_run_log:
+                son = self.last_run_log.strip().split("\n")[-1][:200]
+                self.last_detail += f" — aktor logu: {son}"
             return []
         return items[:limit]
 
@@ -487,6 +523,8 @@ class ApifySource:
         props, schema_err = await self.input_schema()
         out["sema_alanlari"] = sorted(props.keys())[:30] if props else []
         out["sema_hatasi"] = schema_err
+        out["aktor_adi"] = self.actor_title
+        out["aktor_ucretlendirme"] = self.actor_pricing
         if props:
             # 30 gun geriden bak: "bugunden beri" arayan bir sema bos doner
             ornek = payload_from_schema(
@@ -501,6 +539,11 @@ class ApifySource:
         if calisan is None:
             out["kayit_sayisi"] = 0
             out["sonuc"] = "hicbir girdi bicimi sonuc vermedi"
+            out["aktor_logu"] = self.last_run_log
+            if self.last_run_id:
+                out["apify_konsol"] = (
+                    f"https://console.apify.com/actors/runs/{self.last_run_id}"
+                )
             out["oneri"] = (
                 f"'{self.actor.replace('~', '/')}' aktoru bu girdi bicimlerinin hicbirini "
                 "kabul etmiyor. APIFY_ACTOR degiskenini baska bir aktorle degistir "
