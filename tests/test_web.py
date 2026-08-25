@@ -175,3 +175,38 @@ def test_password_protection(db, monkeypatch):
     assert c.get("/api/overview", auth=("admin", "gizli")).status_code == 200
     # health korumasizdir -- Railway saglik kontrolu icin
     assert c.get("/health").status_code == 200
+
+
+# --------------------------------------------------------- gecici disk uyarisi
+def test_warns_when_railway_uses_sqlite(monkeypatch, caplog):
+    """Railway'de PostgreSQL baglanmazsa veri her dagitimda silinir.
+    Bu sessizce olmamali."""
+    import logging
+
+    from alpha_hunter.db import session as sess
+
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_ID", "abc123")
+    monkeypatch.setattr(sess.settings, "database_url", "sqlite:///alpha.db")
+    with caplog.at_level(logging.ERROR):
+        assert sess.warn_if_ephemeral_storage() is True
+    joined = " ".join(r.message for r in caplog.records)
+    assert "PostgreSQL bagli degil" in joined
+    assert "DATABASE_URL" in joined
+
+
+def test_no_warning_on_postgres(monkeypatch):
+    from alpha_hunter.db import session as sess
+
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_ID", "abc123")
+    monkeypatch.setattr(sess.settings, "database_url", "postgresql+psycopg://u:p@h/db")
+    assert sess.warn_if_ephemeral_storage() is False
+
+
+def test_no_warning_outside_railway(monkeypatch):
+    from alpha_hunter.db import session as sess
+
+    for k in list(__import__("os").environ):
+        if k.startswith("RAILWAY_"):
+            monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(sess.settings, "database_url", "sqlite:///local.db")
+    assert sess.warn_if_ephemeral_storage() is False

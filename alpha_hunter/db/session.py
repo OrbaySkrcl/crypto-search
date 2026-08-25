@@ -79,6 +79,28 @@ def session_scope() -> Iterator[Session]:
         s.close()
 
 
+def warn_if_ephemeral_storage() -> bool:
+    """Railway'de SQLite kullanmak veriyi her dagitimda silmek demektir.
+
+    Konteyner diski gecicidir; PostgreSQL baglanmadiginda kod sessizce
+    SQLite'a duser ve haftalarca toplanan veri bir 'Redeploy' ile ucar.
+    Bunu yuksek sesle soylemek gerekiyor.
+    """
+    import os
+
+    on_railway = any(k.startswith("RAILWAY_") for k in os.environ)
+    if on_railway and not settings.is_postgres:
+        log.error("=" * 68)
+        log.error("UYARI: PostgreSQL bagli degil, SQLite kullaniliyor.")
+        log.error("Railway'de konteyner diski GECICIDIR -- toplanan butun veri")
+        log.error("bir sonraki dagitimda SILINIR.")
+        log.error("Cozum: crypto-search servisine su degiskeni ekle ->")
+        log.error("    DATABASE_URL = ${{Postgres.DATABASE_URL}}")
+        log.error("=" * 68)
+        return True
+    return False
+
+
 def init_db(drop: bool = False) -> None:
     eng = get_engine()
     with _init_lock:

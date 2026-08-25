@@ -391,11 +391,31 @@ html{scroll-behavior:smooth}
   <div class="step" data-n="2">
     <h4>Veritabanı ekle</h4>
     <p>Aynı proje ekranında <strong>+ Create</strong> (veya <strong>+ New</strong>) →
-    <strong>Database</strong> → <strong>Add PostgreSQL</strong>.</p>
-    <p>Bitti. Railway bağlantıyı kendisi kurar, sen bir şey yapmayacaksın.</p>
+    <strong>Database</strong> → <strong>Add PostgreSQL</strong>. Kutu
+    <strong>Online</strong> olana kadar bekle.</p>
   </div>
 
   <div class="step" data-n="3">
+    <h4>Veritabanını servise bağla — bu adımı atlama</h4>
+    <p>Railway veritabanını uygulamana <em>otomatik bağlamaz</em>. İkisini elle
+    eşleştirmen gerekir. <strong>crypto-search</strong> servisine tıkla →
+    <strong>Variables</strong> → <strong>+ New Variable</strong>:</p>
+    <div class="code">
+      <div class="bar"><span>crypto-search → Variables</span>
+        <button type="button" data-copy="DATABASE_URL=${{Postgres.DATABASE_URL}}">Kopyala</button></div>
+<pre>İsim  : <b>DATABASE_URL</b>
+Değer : <b>${{Postgres.DATABASE_URL}}</b></pre></div>
+    <p>Değeri olduğu gibi yaz — süslü parantezler dahil. Bu Railway'in
+    <em>variable reference</em> sözdizimi; gerçek şifreyi kendisi yerine koyar.
+    Postgres servisinin adı farklıysa <code>Postgres</code> yerine onu yaz.</p>
+    <div class="note stop"><div class="h">Bağlamazsan veri kaybolur</div>
+    <p>Bu bağlantı yoksa bot konteynerin içindeki bir dosyaya yazar ve Railway
+    o dosyayı her deploy'da siler. Haftalarca topladığın veri tek bir
+    <em>Redeploy</em> ile uçar. Loglarda <code>sqlite3.OperationalError</code>
+    görürsen sebebi budur.</p></div>
+  </div>
+
+  <div class="step" data-n="4">
     <h4>Ayarları gir</h4>
     <p>Soldaki <strong>crypto-search</strong> servisine tıkla (veritabanına değil) →
     <strong>Variables</strong> → <strong>Raw Editor</strong>. Aşağıdakini yapıştır ve
@@ -450,7 +470,7 @@ LOG_LEVEL=INFO</pre></div>
     <strong>tamamen sil</strong> — boş bırakma.</p></div>
   </div>
 
-  <div class="step" data-n="4">
+  <div class="step" data-n="5">
     <h4>Panoya adres ver</h4>
     <p>Aynı serviste <strong>Settings</strong> → aşağı in → <strong>Networking</strong> →
     <strong>Generate Domain</strong>. Sana şuna benzer bir adres verecek:</p>
@@ -460,7 +480,7 @@ LOG_LEVEL=INFO</pre></div>
     <code>WEB_PASSWORD</code>'ün. Panoyu görüyorsan <strong>kurulum bitti.</strong></p>
   </div>
 
-  <div class="step" data-n="5">
+  <div class="step" data-n="6">
     <h4>Çalıştığını doğrula</h4>
     <p><strong>Deployments</strong> → en üstteki dağıtıma tıkla → <strong>Logs</strong>.
     Şu satırı ara:</p>

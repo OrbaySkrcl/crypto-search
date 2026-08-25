@@ -6,7 +6,7 @@ import logging
 import signal
 
 from ..config import settings
-from ..db.session import init_db_when_ready
+from ..db.session import init_db_when_ready, warn_if_ephemeral_storage
 from .alerts import alert_fresh_calls, send_leaderboard
 from .enrich import run_enrich
 from .ingest import run_ingest
@@ -160,6 +160,7 @@ async def run_forever() -> None:
         except NotImplementedError:  # pragma: no cover (Windows)
             pass
 
+    warn_if_ephemeral_storage()
     log.info(
         "Alpha Hunter calisiyor | zincir=%s kaynak=%s | ingest %ddk, enrich %ddk, score %ddk",
         ",".join(settings.chain_list), ",".join(settings.source_list),

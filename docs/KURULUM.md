@@ -109,7 +109,30 @@ Kendin uydur. Örn. `Kahve!2026_Panom`. **Bu `WEB_PASSWORD`.**
 4. Railway hemen kurmaya başlayacak. **Şimdilik hata verirse normal** —
    veritabanı ve ayarlar henüz yok.
 
-## 2.2 · Veritabanı ekle
+## 2.2 · Veritabanı ekle **ve servise bağla**
+
+1. Aynı proje ekranında **+ Create** (veya **+ New**) → **Database** →
+   **Add PostgreSQL**. Kutu **Online** olana kadar bekle.
+
+2. **BU ADIMI ATLAMA.** Railway veritabanını uygulamana otomatik bağlamaz —
+   ikisini elle eşleştirmen gerekir. `crypto-search` servisine tıkla →
+   **Variables** → **+ New Variable**:
+
+   ```
+   İsim  : DATABASE_URL
+   Değer : ${{Postgres.DATABASE_URL}}
+   ```
+
+   Değeri olduğu gibi yaz — süslü parantezler dahil. Bu, Railway'in
+   "variable reference" sözdizimi; gerçek şifreyi kendisi yerine koyar.
+   (Postgres servisinin adı farklıysa `Postgres` yerine onu yaz.)
+
+3. Kaydet. Railway yeniden kuracak.
+
+> **Neden önemli:** bu bağlantı yoksa bot konteynerin içindeki bir dosyaya
+> yazar ve Railway o dosyayı her deploy'da siler. Haftalarca topladığın veri
+> tek bir "Redeploy" ile uçar. Loglarda `sqlite3.OperationalError` görürsen
+> sebep budur.
 
 1. Aynı proje ekranında **+ Create** (veya **+ New**) → **Database** →
    **Add PostgreSQL**.

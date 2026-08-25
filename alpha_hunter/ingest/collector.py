@@ -40,11 +40,13 @@ class Collector:
     def __init__(self, sources: Sequence[TweetSource], fallback_chain: bool = True) -> None:
         self.sources = list(sources)
         self.fallback_chain = fallback_chain
+        self._reported = False
 
     async def collect_search(
         self, queries: Sequence[str], since: datetime, limit_per_query: int = 200
     ) -> list[RawTweet]:
         seen: dict[str, RawTweet] = {}
+        await self._report_sources()
         for q in queries:
             got_any = False
             for src in self.sources:
@@ -58,13 +60,36 @@ class Collector:
                     if count:
                         got_any = True
                         log.info("[%s] '%s' -> %d tweet", src.name, q[:40], count)
+                    else:
+                        # Sessiz sifir, hatadan daha sinsi: kaynak calisti ama
+                        # bos dondu. Gorunur olmali, yoksa teshis imkansiz.
+                        log.warning("[%s] '%s' -> 0 tweet", src.name, q[:40])
                 except Exception as exc:
-                    log.warning("[%s] '%s' hata: %s", src.name, q[:40], exc)
+                    log.warning("[%s] '%s' hata: %s: %s", src.name, q[:40], type(exc).__name__, exc)
                 if got_any and self.fallback_chain:
                     break
             if not got_any:
                 log.warning("hicbir kaynak '%s' icin veri dondurmedi", q[:40])
         return list(seen.values())
+
+    async def _report_sources(self) -> None:
+        """Hangi kaynagin acik, hangisinin kapali oldugunu bir kez yazar."""
+        if self._reported:
+            return
+        self._reported = True
+        active, idle = [], []
+        for src in self.sources:
+            (active if await src.available() else idle).append(src.name)
+        log.info(
+            "tweet kaynaklari -> aktif: %s | kapali: %s",
+            ", ".join(active) or "YOK",
+            ", ".join(idle) or "-",
+        )
+        if not active:
+            log.error(
+                "Hicbir tweet kaynagi aktif degil. APIFY_TOKEN girildi mi, "
+                "TWEET_SOURCES dogru mu?"
+            )
 
     async def collect_timelines(
         self, handles: Sequence[str], since: datetime, limit_per_handle: int = 100

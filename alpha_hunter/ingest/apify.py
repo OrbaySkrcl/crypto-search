@@ -31,6 +31,7 @@ class ApifySource:
 
     async def _run(self, payload: dict, limit: int) -> list[dict]:
         if not self.token:
+            log.warning("APIFY_TOKEN yok, apify atlaniyor")
             return []
         url = f"{_BASE}/acts/{self.actor}/run-sync-get-dataset-items"
         data = await self.http.post(
@@ -41,9 +42,26 @@ class ApifySource:
             max_retries=2,
         )
         if isinstance(data, list):
+            if not data:
+                log.warning(
+                    "apify aktoru bos liste dondu (aktor: %s). Kredi bitmis, aktor adi "
+                    "yanlis ya da girdi bicimi uyumsuz olabilir.", self.actor
+                )
             return data[:limit]
-        if isinstance(data, dict) and isinstance(data.get("items"), list):
-            return data["items"][:limit]
+        if isinstance(data, dict):
+            if isinstance(data.get("items"), list):
+                return data["items"][:limit]
+            # Apify hata govdesi: {"error": {"type": ..., "message": ...}}
+            err = data.get("error") or {}
+            log.error(
+                "apify hatasi (aktor: %s): %s %s",
+                self.actor, err.get("type", "?"), str(err.get("message", data))[:220],
+            )
+            return []
+        log.error(
+            "apify yanit vermedi (aktor: %s). Token gecerli mi, aktor adi dogru mu?",
+            self.actor,
+        )
         return []
 
     async def search(self, query: str, since: datetime, limit: int = 200) -> AsyncIterator[RawTweet]:
