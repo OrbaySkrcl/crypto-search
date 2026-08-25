@@ -158,6 +158,48 @@ def list_jobs(session: Session, limit: int = 20) -> list[dict]:
     return [job_to_dict(j) for j in rows]
 
 
+def _slim_stats(stats: dict) -> dict:
+    keep = (
+        "tweets_seen", "tweets_with_ca", "ca_candidates",
+        "calls_new", "skipped_wrong_chain", "chains_seen",
+    )
+    return {k: stats.get(k) for k in keep if k in stats}
+
+
+def diagnose_empty_result(stats: dict) -> str:
+    """Bos sonucun GERCEK sebebini soyler.
+
+    "CA iceren tweet yok" uc farkli durumu ortuyordu ve ucunun cozumu de farkli.
+    Kullaniciyi yanlis yone gondermemek icin ayirmak sart.
+    """
+    from ..config import settings
+
+    seen = stats.get("tweets_seen", 0) or 0
+    with_ca = stats.get("tweets_with_ca", 0) or 0
+    skipped = stats.get("skipped_wrong_chain", 0) or 0
+    chains_seen = stats.get("chains_seen") or {}
+
+    if skipped:
+        others = {k: v for k, v in chains_seen.items() if k not in settings.chain_list}
+        names = ", ".join(sorted(others)) or "baska zincirler"
+        return (
+            f"{skipped} kontrat bulundu ama {names} zincirinde — sen yalnizca "
+            f"{','.join(settings.chain_list)} takip ediyorsun. "
+            f"CHAINS degiskenine {names} ekleyip tekrar dene."
+        )
+    if seen == 0:
+        return (
+            "Bu hesaptan hic tweet cekilemedi. Tweet kaynagi calismiyor olabilir "
+            "(APIFY_TOKEN gecerli mi?) ya da hesap adi yanlis/korumali olabilir."
+        )
+    if with_ca == 0:
+        return f"{seen} tweet tarandi, hicbirinde kontrat adresi yok."
+    return (
+        f"{seen} tweette {stats.get('ca_candidates', 0)} adres adayi bulundu ama "
+        "hicbiri DEX'te dogrulanamadi (silinmis token ya da yanlis pozitif olabilir)."
+    )
+
+
 async def run_backfill_job(job_id: int) -> None:
     """Bir tarama isini bastan sona calistirir."""
     from .backfill import backfill_account
@@ -172,7 +214,7 @@ async def run_backfill_job(job_id: int) -> None:
     log.info("tarama basliyor: @%s (%d gun)", handle, days)
     set_progress(job_id, f"@{handle} son {days} gun taraniyor")
     try:
-        res = await backfill_account(handle, days=days)
+        res, stats = await backfill_account(handle, days=days)
     except Exception as exc:
         log.exception("tarama basarisiz: @%s", handle)
         finish(job_id, error=f"{type(exc).__name__}: {exc}")
@@ -185,7 +227,8 @@ async def run_backfill_job(job_id: int) -> None:
                 "handle": handle,
                 "days": days,
                 "found": False,
-                "note": "bu hesapta kontrat adresi iceren tweet bulunamadi",
+                "reason": diagnose_empty_result(stats),
+                "stats": _slim_stats(stats),
             },
         )
         return
@@ -193,6 +236,7 @@ async def run_backfill_job(job_id: int) -> None:
     finish(
         job_id,
         result={
+            "stats": _slim_stats(stats),
             "handle": res.handle,
             "days": days,
             "found": True,

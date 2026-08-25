@@ -422,7 +422,7 @@ Değer : <b>${{Postgres.DATABASE_URL}}</b></pre></div>
     <b>BURAYA</b> yazan yerleri kendi değerlerinle doldur.</p>
     <div class="code">
       <div class="bar"><span>Railway → Variables → Raw Editor</span>
-        <button type="button" data-copy="CHAINS=solana
+        <button type="button" data-copy="CHAINS=solana,ethereum,base
 TWEET_SOURCES=apify,nitter
 APIFY_TOKEN=apify_api_BURAYA_SENIN_TOKENIN
 BIRDEYE_API_KEY=BURAYA_SENIN_ANAHTARIN
@@ -443,7 +443,7 @@ INGEST_INTERVAL_MINUTES=10
 ENRICH_INTERVAL_MINUTES=5
 SCORE_INTERVAL_MINUTES=60
 LOG_LEVEL=INFO">Kopyala</button></div>
-<pre>CHAINS=solana
+<pre>CHAINS=solana,ethereum,base
 TWEET_SOURCES=apify,nitter
 APIFY_TOKEN=apify_api_<b>BURAYA_SENIN_TOKENIN</b>
 BIRDEYE_API_KEY=<b>BURAYA_SENIN_ANAHTARIN</b>
@@ -650,6 +650,10 @@ python -m alpha_hunter inspect <b>hesapadi</b></pre></div>
         <td>Nitter örnekleri ölü, hiç veri gelmiyor</td>
         <td><code>APIFY_TOKEN</code> gir ve <code>TWEET_SOURCES=apify,nitter</code> yap.
         Nitter tek başına çalışmıyor.</td></tr>
+      <tr><td><strong>Tarama "X kontrat bulundu ama … zincirinde" diyor</strong></td>
+        <td>Hesap senin takip etmediğin bir zincirde CA paylaşıyor</td>
+        <td><code>CHAINS</code>'e o zinciri ekle (örn. <code>solana,ethereum,base</code>)
+        ve tekrar tarat. Sistem adresi buluyor ama takip listende olmadığı için atıyor.</td></tr>
       <tr><td>Panoda hep 0 çağrı</td><td>Tweet kaynağı çalışmıyor</td>
         <td>Loglarda <code>hicbir kaynak … dondurmedi</code> ara. <code>APIFY_TOKEN</code> doğru mu?</td></tr>
       <tr><td><code>nitter ornegi basarisiz</code></td><td>Nitter örnekleri düşmüş</td>
@@ -685,7 +689,7 @@ python -m alpha_hunter inspect <b>hesapadi</b></pre></div>
       <tr><td>"Başarılı" eşiğini yükselt</td><td><code>WIN_MULTIPLE</code></td><td><code>3.0</code> → <code>5.0</code></td></tr>
       <tr><td>Spam filtresini sıkılaştır</td><td><code>SPRAY_SOFT_CALLS_PER_DAY</code></td><td><code>3</code> → <code>2</code></td></tr>
       <tr><td>Daha eski verilere de bak</td><td><code>SCORE_WINDOW_DAYS</code></td><td><code>120</code> → <code>180</code></td></tr>
-      <tr><td>Base zincirini de tara</td><td><code>CHAINS</code></td><td><code>solana</code> → <code>solana,base</code></td></tr>
+      <tr><td>Başka zincirleri de tara</td><td><code>CHAINS</code></td><td><code>solana</code> → <code>solana,ethereum,base</code></td></tr>
       <tr><td>Belirli hesapları takip et</td><td><code>WATCHLIST_HANDLES</code></td><td><code>hesap1,hesap2</code></td></tr>
       <tr><td>Bot seyrek çalışsın (ucuzlasın)</td><td><code>INGEST_INTERVAL_MINUTES</code></td><td><code>10</code> → <code>20</code></td></tr>
     </tbody></table></div>

@@ -145,7 +145,7 @@ Kendin uydur. Örn. `Kahve!2026_Panom`. **Bu `WEB_PASSWORD`.**
 3. Aşağıdakini olduğu gibi yapıştır ve `...` yerlerini kendi değerlerinle doldur:
 
 ```
-CHAINS=solana
+CHAINS=solana,ethereum,base
 TWEET_SOURCES=apify,nitter
 APIFY_TOKEN=apify_api_BURAYA_SENIN_TOKENIN
 BIRDEYE_API_KEY=BURAYA_SENIN_ANAHTARIN
@@ -340,6 +340,7 @@ katı orada görünür.
 | **Deploy logları tamamen boş** | Build aşamasında patladı, deploy hiç başlamadı | Railway'de **Deployments → ilgili dağıtım → Build Logs** sekmesine bak (Deploy Logs değil). Gerçek hata orada. |
 | **Loglarda `sqlite3.OperationalError`** | PostgreSQL bağlı değil, bot konteyner içindeki dosyaya yazıyor | Railway'de veritabanı eklentisi var mı bak. Yoksa **+ Create → Database → Add PostgreSQL**. **Veri her deploy'da siliniyor demektir — acil.** |
 | **Loglarda sürekli `hicbir ornek yanit vermedi`** | Nitter örnekleri ölü, veri gelmiyor | `APIFY_TOKEN` gir ve `TWEET_SOURCES=apify,nitter` yap. Nitter tek başına çalışmıyor. |
+| **Tarama "X kontrat bulundu ama … zincirinde" diyor** | Hesap senin takip etmediğin bir zincirde CA paylaşıyor | `CHAINS` değişkenine o zinciri ekle (örn. `solana,ethereum,base`) ve tekrar tarat. |
 | Panoda hep 0 çağrı | Tweet kaynağı çalışmıyor | Railway loglarında `hicbir kaynak ... veri dondurmedi` ara. `APIFY_TOKEN` doğru mu? |
 | Loglarda `nitter ornegi basarisiz` | Nitter örnekleri düşmüş | Normal. `TWEET_SOURCES=apify,nitter` yaptıysan Apify devralır. |
 | Telegram mesajı gelmiyor | Token/chat_id yanlış, veya henüz 65+ hesap yok | Önce `ALERT_MIN_ALPHA_SCORE=0` yapıp test et, sonra geri al. |
@@ -366,7 +367,7 @@ Railway → **Variables** → değiştir → **Deploy**. Kod bilmene gerek yok.
 | "Başarılı" eşiğini yükselt | `WIN_MULTIPLE` | `3.0` → `5.0` |
 | Spam filtresini sıkılaştır | `SPRAY_SOFT_CALLS_PER_DAY` | `3` → `2` |
 | Daha eski verilere de bak | `SCORE_WINDOW_DAYS` | `120` → `180` |
-| Base zincirini de tara | `CHAINS` | `solana` → `solana,base` |
+| Başka zincirleri de tara | `CHAINS` | `solana` → `solana,ethereum,base` |
 | Belirli hesapları takip et | `WATCHLIST_HANDLES` | `hesap1,hesap2,hesap3` |
 | Bot daha seyrek çalışsın (ucuzlasın) | `INGEST_INTERVAL_MINUTES` | `10` → `20` |
 

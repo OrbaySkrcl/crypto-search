@@ -39,7 +39,12 @@ async def run_ingest(
     handles = handles if handles is not None else settings.watchlist
     per_query = limit or max(50, settings.ingest_max_tweets_per_run // max(1, len(queries) or 1))
 
-    stats = {"tweets_seen": 0, "tweets_new": 0, "calls_new": 0, "tokens_new": 0, "rejected": 0}
+    stats: dict = {
+        "tweets_seen": 0, "tweets_new": 0, "calls_new": 0, "tokens_new": 0, "rejected": 0,
+        # Teshis: "CA bulunamadi" ile "CA bulundu ama zincirin disinda" ayri seylerdir
+        "tweets_with_ca": 0, "ca_candidates": 0,
+        "skipped_wrong_chain": 0, "chains_seen": {},
+    }
 
     async with HttpClient() as http:
         collector = Collector(build_sources(http))
@@ -54,19 +59,27 @@ async def run_ingest(
         log.info("%d tekil tweet toplandi", len(raws))
 
         # --- 1) CA adaylarini cikar ------------------------------------- #
-        chains = settings.chain_list
+        # NOT: burada zincir filtresi UYGULANMAZ. Bir EVM adresinin hangi
+        # zincire ait oldugu ancak DexScreener'a sorunca belli olur; erken
+        # filtrelersek "Ethereum kontrati paylasan hesap" ile "hic CA
+        # paylasmayan hesap" ayirt edilemez hale gelir. Filtre asagida,
+        # dogrulamadan sonra.
         per_tweet: dict[str, list[ExtractedCA]] = {}
         all_addresses: set[str] = set()
         for r in raws:
             if r.is_retweet or not looks_like_alpha_tweet(r.text):
                 continue
-            cas = extract_contract_addresses(r.text, chains=chains, expanded_urls=r.expanded_urls)
+            cas = extract_contract_addresses(r.text, chains=None, expanded_urls=r.expanded_urls)
             if cas:
                 per_tweet[r.tweet_id] = cas
                 all_addresses.update(c.address for c in cas)
+        stats["tweets_with_ca"] = len(per_tweet)
+        stats["ca_candidates"] = len(all_addresses)
 
         if not all_addresses:
-            log.info("CA iceren tweet bulunamadi")
+            log.info(
+                "CA iceren tweet bulunamadi (%d tweet tarandi)", stats["tweets_seen"]
+            )
             _record_run(stats, queries)
             return stats
 
@@ -123,7 +136,11 @@ async def run_ingest(
                     else:
                         chain, info_obj = (info.chain or ca.chain), info
 
+                    stats["chains_seen"][chain] = stats["chains_seen"].get(chain, 0) + 1
                     if settings.chain_list and chain not in settings.chain_list:
+                        # Adres gecerli ve DEX'te var, ama takip etmedigimiz bir
+                        # zincirde. Sessizce yutma -- sayip raporla.
+                        stats["skipped_wrong_chain"] += 1
                         handled.add(ca.address)
                         continue
 
@@ -168,6 +185,14 @@ async def run_ingest(
         "ingest bitti: %(tweets_seen)d goruldu / %(tweets_new)d yeni tweet / "
         "%(calls_new)d yeni cagri / %(tokens_new)d yeni token / %(rejected)d elendi", stats
     )
+    if stats["skipped_wrong_chain"]:
+        others = {k: v for k, v in stats["chains_seen"].items() if k not in settings.chain_list}
+        log.warning(
+            "%d kontrat takip edilmeyen zincirlerde bulundu (%s). CHAINS su an: %s",
+            stats["skipped_wrong_chain"],
+            ", ".join(f"{k}: {v}" for k, v in sorted(others.items())) or "?",
+            ",".join(settings.chain_list),
+        )
     return stats
 
 

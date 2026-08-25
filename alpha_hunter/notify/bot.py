@@ -211,7 +211,7 @@ def _cmd_jobs() -> str:
                 f"isabet {r['win_rate']*100:.0f}% ({r['n_wins']}/{r['n_evaluated']})"
             )
         elif j["status"] == "done":
-            out.append("    kontrat adresi iceren tweet bulunamadi")
+            out.append(f"    {esc((r.get('reason') or 'sonuc yok')[:110])}")
         elif j["status"] == "failed":
             out.append(f"    {esc((j.get('error') or '')[:90])}")
     return "\n".join(out)
@@ -427,9 +427,8 @@ async def announce_job_result(job_id: int) -> None:
         text = f"❌ <b>@{esc(d['target'])} taramasi basarisiz</b>\n{esc((d.get('error') or '')[:200])}"
     elif not r.get("found"):
         text = (
-            f"🔍 <b>@{esc(d['target'])}</b> — son {d['days']} gunde kontrat adresi iceren "
-            "tweet bulunamadi.\n\n"
-            "Hesap gercekten CA paylasmiyor olabilir, ya da tweet kaynagi veri dondurmedi."
+            f"🔍 <b>@{esc(d['target'])}</b> — son {d['days']} gunde sonuc cikmadi.\n\n"
+            f"{esc(r.get('reason') or 'sebep belirlenemedi')}"
         )
     else:
         tier = r["tier"]

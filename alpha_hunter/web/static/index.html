@@ -54,6 +54,7 @@
     position:sticky;top:0;background:var(--panel)}
   th.num,td.num{text-align:right}
   td{padding:9px 10px;border-bottom:1px solid #1a1e2a;white-space:nowrap}
+  td.wrap{white-space:normal;min-width:260px;max-width:430px;line-height:1.45;padding-top:11px;padding-bottom:11px}
   tbody tr:hover{background:var(--panel2)}
   tbody tr:last-child td{border-bottom:none}
 
@@ -450,7 +451,8 @@ async function loadJobs(){
         let sonuc = '<span class="dim">—</span>';
         if(j.status==='running') sonuc = `<span class="dim">${esc(j.progress||'')}</span>`;
         else if(j.status==='failed') sonuc = `<span class="down">${esc((j.error||'').slice(0,60))}</span>`;
-        else if(j.status==='done' && !r.found) sonuc = '<span class="dim">CA içeren tweet yok</span>';
+        else if(j.status==='done' && !r.found)
+          sonuc = `<span class="dim">${esc(r.reason||'sonuç yok')}</span>`;
         else if(j.status==='done') sonuc = `<span class="tier ${r.tier}">${r.tier}</span> ${r.n_calls} çağrı`;
         return `<tr>
           <td class="num dim">${j.id}</td>
@@ -459,7 +461,7 @@ async function loadJobs(){
             : '@'+esc(j.target)}</td>
           <td class="num">${j.days??'—'}</td>
           <td><span class="jst ${j.status}">${lbl[j.status]||j.status}</span></td>
-          <td>${sonuc}</td>
+          <td class="wrap">${sonuc}</td>
           <td class="num">${r.alpha_score!=null?`<b>${r.alpha_score}</b>`:'—'}</td>
           <td class="num">${r.win_rate!=null?`${pct(r.win_rate)} <span class="dim">(${r.n_wins}/${r.n_evaluated})</span>`:'—'}</td>
           <td class="num ${mcls(r.median_multiple)}">${r.median_multiple!=null?fmtX(r.median_multiple):'—'}</td>

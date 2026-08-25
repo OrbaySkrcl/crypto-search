@@ -152,3 +152,55 @@ def test_backfill_requires_auth_when_password_set(db, monkeypatch):
     assert c.get("/api/jobs").status_code == 401
     ok = c.post("/api/backfill", json={"handle": "authed"}, auth=("admin", "gizli"))
     assert ok.status_code == 202
+
+
+# ------------------------------------------------- bos sonucun gercek sebebi
+def test_diagnose_wrong_chain_is_the_first_suspect(monkeypatch):
+    """En sinsi durum: adres bulundu, dogrulandi, ama takip edilmeyen zincirde.
+    Kullaniciya 'CA yok' demek yanlis yone gonderir."""
+    monkeypatch.setattr(settings, "chains", "solana")
+    msg = jobq.diagnose_empty_result({
+        "tweets_seen": 40, "tweets_with_ca": 12, "ca_candidates": 12,
+        "skipped_wrong_chain": 12, "chains_seen": {"ethereum": 12},
+    })
+    assert "ethereum" in msg
+    assert "CHAINS" in msg
+    assert "solana" in msg
+
+
+def test_diagnose_no_tweets_points_at_the_source():
+    msg = jobq.diagnose_empty_result({
+        "tweets_seen": 0, "tweets_with_ca": 0, "ca_candidates": 0,
+        "skipped_wrong_chain": 0, "chains_seen": {},
+    })
+    assert "hic tweet cekilemedi" in msg
+    assert "APIFY_TOKEN" in msg
+
+
+def test_diagnose_tweets_but_no_contract():
+    msg = jobq.diagnose_empty_result({
+        "tweets_seen": 55, "tweets_with_ca": 0, "ca_candidates": 0,
+        "skipped_wrong_chain": 0, "chains_seen": {},
+    })
+    assert "55 tweet" in msg
+    assert "kontrat adresi yok" in msg
+
+
+def test_diagnose_candidates_that_failed_dex_verification():
+    msg = jobq.diagnose_empty_result({
+        "tweets_seen": 30, "tweets_with_ca": 4, "ca_candidates": 6,
+        "skipped_wrong_chain": 0, "chains_seen": {},
+    })
+    assert "dogrulanamadi" in msg
+
+
+def test_slim_stats_keeps_only_diagnostic_fields():
+    slim = jobq._slim_stats({
+        "tweets_seen": 10, "tweets_with_ca": 2, "ca_candidates": 3,
+        "calls_new": 1, "skipped_wrong_chain": 0, "chains_seen": {"solana": 1},
+        "tweets_new": 10, "rejected": 5, "tokens_new": 1,
+    })
+    assert set(slim) == {
+        "tweets_seen", "tweets_with_ca", "ca_candidates",
+        "calls_new", "skipped_wrong_chain", "chains_seen",
+    }
