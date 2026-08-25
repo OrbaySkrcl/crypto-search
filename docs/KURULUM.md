@@ -341,6 +341,7 @@ katı orada görünür.
 | **Loglarda `sqlite3.OperationalError`** | PostgreSQL bağlı değil, bot konteyner içindeki dosyaya yazıyor | Railway'de veritabanı eklentisi var mı bak. Yoksa **+ Create → Database → Add PostgreSQL**. **Veri her deploy'da siliniyor demektir — acil.** |
 | **Loglarda sürekli `hicbir ornek yanit vermedi`** | Nitter örnekleri ölü, veri gelmiyor | `APIFY_TOKEN` gir ve `TWEET_SOURCES=apify,nitter` yap. Nitter tek başına çalışmıyor. |
 | **Tarama "X kontrat bulundu ama … zincirinde" diyor** | Hesap senin takip etmediğin bir zincirde CA paylaşıyor | `CHAINS` değişkenine o zinciri ekle (örn. `solana,ethereum,base`) ve tekrar tarat. |
+| **Apify çalışıyor mu bilmiyorum** | Panoda **Hesap tara → Bağlantı testi** düğmesi tek gerçek çağrı yapar | Token geçerli mi, aktör çalışıyor mu, kaç kayıt dönüyor — hepsini tek ekranda gösterir |
 | **Tarama "Hiç tweet çekilemedi" diyor** | Sonuç satırının altında her kaynağın ne dediği yazar | `apify: kapali` → token yok veya günlük bütçe dolmuş · `apify: 0 tweet` → aktör adı/kredi sorunu · `nitter: 0 tweet` → ücretsiz örnekler kapalı (normal) |
 | Panoda hep 0 çağrı | Tweet kaynağı çalışmıyor | Railway loglarında `hicbir kaynak ... veri dondurmedi` ara. `APIFY_TOKEN` doğru mu? |
 | Loglarda `nitter ornegi basarisiz` | Nitter örnekleri düşmüş | Normal. `TWEET_SOURCES=apify,nitter` yaptıysan Apify devralır. |
@@ -370,6 +371,7 @@ Railway → **Variables** → değiştir → **Deploy**. Kod bilmene gerek yok.
 | Daha eski verilere de bak | `SCORE_WINDOW_DAYS` | `120` → `180` |
 | Başka zincirleri de tara | `CHAINS` | `solana` → `solana,ethereum,base` |
 | Belirli hesapları takip et | `WATCHLIST_HANDLES` | `hesap1,hesap2,hesap3` |
+| **Sadece manuel tarama yap (en ucuz)** | `INGEST_INTERVAL_MINUTES` | `10` → `1440` — otomatik keşif günde 1'e iner, bütçe manuel taramalara kalır |
 | Bot daha seyrek çalışsın (ucuzlasın) | `INGEST_INTERVAL_MINUTES` | `10` → `30` |
 | Apify faturasına tavan koy | `APIFY_DAILY_TWEET_BUDGET` | `4000` → `1500` |
 | Daha az sorgu tara (ucuzlasın) | `SEARCH_QUERIES` | 4 sorgu yerine 1–2 tane bırak |

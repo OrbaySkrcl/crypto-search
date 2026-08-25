@@ -100,6 +100,7 @@ class HttpClient:
         headers: dict | None = None,
         expect_json: bool = True,
         max_retries: int | None = None,
+        timeout: float | None = None,
     ) -> Any | None:
         retries = max_retries if max_retries is not None else settings.http_max_retries
         lim = limiter_for(bucket)
@@ -107,7 +108,10 @@ class HttpClient:
         for attempt in range(retries + 1):
             await lim.acquire()
             try:
-                r = await self.client.get(url, params=params, headers=headers)
+                r = await self.client.get(
+                    url, params=params, headers=headers,
+                    **({"timeout": timeout} if timeout else {}),
+                )
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 if attempt >= retries:
                     log.debug("GET %s agi hatasi: %s", url, exc)
@@ -148,13 +152,17 @@ class HttpClient:
         json_body: dict | None = None,
         headers: dict | None = None,
         max_retries: int | None = None,
+        timeout: float | None = None,
     ) -> Any | None:
         retries = max_retries if max_retries is not None else settings.http_max_retries
         lim = limiter_for(bucket)
         for attempt in range(retries + 1):
             await lim.acquire()
             try:
-                r = await self.client.post(url, json=json_body, headers=headers)
+                r = await self.client.post(
+                    url, json=json_body, headers=headers,
+                    **({"timeout": timeout} if timeout else {}),
+                )
             except (httpx.TimeoutException, httpx.TransportError):
                 if attempt >= retries:
                     return None

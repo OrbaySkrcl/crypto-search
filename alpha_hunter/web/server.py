@@ -150,6 +150,19 @@ def create_app() -> FastAPI:
             data = jobq.job_to_dict(fresh) if fresh else jobq.job_to_dict(job)
         return JSONResponse({"message": msg, "job": data}, status_code=202)
 
+    @app.get("/api/diag/apify", dependencies=[Depends(_check_auth)])
+    async def api_diag_apify(handle: str = Query("elonmusk")) -> JSONResponse:
+        """Apify'a tek bir gercek cagri yapar ve ham sonucu dondurur.
+
+        Tahmin yurutmeyi bitirir: token gecerli mi, aktor calisiyor mu, kac
+        kayit donuyor, kayitlar cozumlenebiliyor mu -- hepsi tek istekte.
+        """
+        from ..http import HttpClient
+        from ..ingest.apify import ApifySource
+
+        async with HttpClient(timeout=settings.apify_request_timeout) as http:
+            return JSONResponse(await ApifySource(http).diagnose(handle))
+
     @app.get("/api/jobs", dependencies=[Depends(_check_auth)])
     def api_jobs(limit: int = Query(20, ge=1, le=100)) -> JSONResponse:
         with session_scope() as s:

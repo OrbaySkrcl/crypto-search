@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     # calistigi icin fatura sessizce buyuyebilir; gunluk tavan koyuyoruz.
     # 0 = sinirsiz.
     apify_daily_tweet_budget: int = 4000
+    # Aktor isini bitirene kadar beklenecek toplam sure. Twitter taramasi
+    # dakikalar surebilir; kisa tutmak "ucreti oder ama sonucu alma"ya yol acar.
+    apify_max_wait_seconds: int = 420
+    apify_request_timeout: float = 60.0
     x_bearer_token: str | None = None
     twscrape_db: str = "twscrape_accounts.db"
 

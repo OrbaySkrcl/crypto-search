@@ -5,7 +5,9 @@ aktorden aktore degistigi icin normalizer esnek yazildi.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from typing import Any
@@ -88,39 +90,150 @@ class ApifySource:
         return True
 
     async def _run(self, payload: dict, limit: int) -> list[dict]:
+        """Aktoru ASENKRON calistirir: baslat -> bitmesini bekle -> sonucu al.
+
+        Neden senkron uc (run-sync-get-dataset-items) kullanilmiyor:
+        o uc, aktor isini bitirene kadar HTTP baglantisini acik tutar. Bir
+        Twitter taramasi dakikalar surebilir; istemci zaman asimina ugrayinca
+        Apify tarafinda is CALISMAYA DEVAM EDER ve UCRETLENDIRILIR, ama bize
+        hicbir sonuc donmez. Yeniden deneme bunu ucla carpar. Bu desende ise
+        baglanti kisa tutuluyor, is durumu yoklanarak bekleniyor.
+        """
+        self.last_detail = None
         if not self.token:
-            log.warning("APIFY_TOKEN yok, apify atlaniyor")
+            self.last_detail = "APIFY_TOKEN tanimli degil"
             return []
-        url = f"{_BASE}/acts/{self.actor}/run-sync-get-dataset-items"
-        data = await self.http.post(
-            url,
+
+        auth = {"Authorization": f"Bearer {self.token}"}
+        timeout = settings.apify_request_timeout
+
+        # --- 1) isi baslat ------------------------------------------------ #
+        started = await self.http.post(
+            f"{_BASE}/acts/{self.actor}/runs",
             bucket="apify",
             json_body=payload,
-            headers={"Authorization": f"Bearer {self.token}"},
-            max_retries=2,
+            headers=auth,
+            max_retries=0,          # ucretli is: asla korlemesine tekrarlama
+            timeout=timeout,
         )
-        if isinstance(data, list):
-            if not data:
-                log.warning(
-                    "apify aktoru bos liste dondu (aktor: %s). Kredi bitmis, aktor adi "
-                    "yanlis ya da girdi bicimi uyumsuz olabilir.", self.actor
-                )
-            return data[:limit]
-        if isinstance(data, dict):
-            if isinstance(data.get("items"), list):
-                return data["items"][:limit]
-            # Apify hata govdesi: {"error": {"type": ..., "message": ...}}
-            err = data.get("error") or {}
-            log.error(
-                "apify hatasi (aktor: %s): %s %s",
-                self.actor, err.get("type", "?"), str(err.get("message", data))[:220],
+        if not isinstance(started, dict) or not started.get("data"):
+            err = (started or {}).get("error", {}) if isinstance(started, dict) else {}
+            self.last_detail = (
+                f"aktor baslatilamadi ({self.actor}): "
+                f"{err.get('type', 'yanit yok')} {str(err.get('message', ''))[:160]}".strip()
+                or f"aktor baslatilamadi ({self.actor}) — token gecerli mi, aktor kiralandi mi?"
             )
+            log.error("apify: %s", self.last_detail)
             return []
-        log.error(
-            "apify yanit vermedi (aktor: %s). Token gecerli mi, aktor adi dogru mu?",
-            self.actor,
+
+        run = started["data"]
+        run_id = run.get("id")
+        dataset_id = run.get("defaultDatasetId")
+        log.info("apify isi basladi: %s (aktor %s)", run_id, self.actor)
+
+        # --- 2) bitmesini bekle ------------------------------------------- #
+        deadline = time.monotonic() + settings.apify_max_wait_seconds
+        status = run.get("status", "READY")
+        while status in ("READY", "RUNNING"):
+            if time.monotonic() >= deadline:
+                self.last_detail = (
+                    f"aktor {settings.apify_max_wait_seconds}sn icinde bitmedi "
+                    "(APIFY_MAX_WAIT_SECONDS ile artirabilirsin)"
+                )
+                log.warning("apify: %s", self.last_detail)
+                return []
+            await asyncio.sleep(5)
+            info = await self.http.get(
+                f"{_BASE}/actor-runs/{run_id}",
+                bucket="apify",
+                headers=auth,
+                max_retries=1,
+                timeout=timeout,
+            )
+            status = ((info or {}).get("data") or {}).get("status") or status
+
+        if status != "SUCCEEDED":
+            self.last_detail = f"aktor {status} durumuyla bitti"
+            log.warning("apify isi %s: %s", run_id, status)
+            if status not in ("FAILED", "ABORTED", "TIMED-OUT"):
+                return []
+
+        # --- 3) sonuclari al ---------------------------------------------- #
+        items = await self.http.get(
+            f"{_BASE}/datasets/{dataset_id}/items",
+            bucket="apify",
+            params={"limit": str(limit), "clean": "true", "format": "json"},
+            headers=auth,
+            max_retries=1,
+            timeout=timeout,
         )
-        return []
+        if not isinstance(items, list):
+            self.last_detail = "sonuc kumesi okunamadi"
+            log.error("apify veri kumesi okunamadi: %s", dataset_id)
+            return []
+        if not items:
+            self.last_detail = (
+                f"aktor calisti ({status}) ama 0 kayit dondurdu — kredi bitmis, "
+                "hesap korumali/askida ya da tarih araligi bos olabilir"
+            )
+            log.warning("apify: %s", self.last_detail)
+        else:
+            log.info("apify %d kayit dondurdu", len(items))
+        return items[:limit]
+
+    async def diagnose(self, handle: str = "elonmusk") -> dict:
+        """Tek bir gercek cagri yapip ham sonucu dondurur.
+
+        Panodaki 'Baglanti testi' dugmesi bunu cagirir: tahmin yurutmek yerine
+        Apify'in ne dedigini oldugu gibi gosterir.
+        """
+        out: dict = {
+            "token_var": bool(self.token),
+            "token_onek": (self.token or "")[:12] + "..." if self.token else None,
+            "aktor": self.actor.replace("~", "/"),
+            "gunluk_kullanim": budget_used(),
+            "gunluk_butce": settings.apify_daily_tweet_budget,
+            "butce_doldu": budget_exhausted(),
+        }
+        if not self.token:
+            out["sonuc"] = "APIFY_TOKEN tanimli degil"
+            return out
+
+        me = await self.http.get(
+            f"{_BASE}/users/me",
+            bucket="apify",
+            headers={"Authorization": f"Bearer {self.token}"},
+            max_retries=0,
+            timeout=30.0,
+        )
+        if isinstance(me, dict) and me.get("data"):
+            out["hesap"] = me["data"].get("username") or "?"
+            out["token_gecerli"] = True
+        else:
+            out["token_gecerli"] = False
+            out["sonuc"] = "Token gecersiz ya da Apify'a ulasilamiyor"
+            return out
+
+        payload = {
+            "searchTerms": [f"from:{handle}"],
+            "maxItems": 5,
+            "sort": "Latest",
+        }
+        out["gonderilen_girdi"] = payload
+        items = await self._run(payload, 5)
+        out["kayit_sayisi"] = len(items)
+        out["aciklama"] = self.last_detail
+        if items:
+            out["ornek_alanlar"] = sorted(items[0].keys())[:25]
+            t = _normalise(items[0])
+            out["cozumlenebildi"] = t is not None
+            if t:
+                out["ornek_tweet"] = {
+                    "hesap": t.handle, "tarih": t.posted_at.isoformat(),
+                    "metin": t.text[:120],
+                }
+        out["sonuc"] = "calisiyor" if items else "aktor sonuc dondurmedi"
+        return out
 
     async def search(self, query: str, since: datetime, limit: int = 200) -> AsyncIterator[RawTweet]:
         payload = {

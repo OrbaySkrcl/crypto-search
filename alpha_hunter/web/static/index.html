@@ -100,7 +100,7 @@
   .kv div{background:var(--panel2);border-radius:7px;padding:9px 11px}
   .kv .k{color:var(--dim2);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
   .kv .v{font-family:ui-monospace,Menlo,monospace;font-size:16px;margin-top:2px}
-  .form{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:16px;max-width:640px}
+  .form{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:16px;max-width:820px}
   .fld{display:flex;flex-direction:column;gap:5px}
   .fld label{font-size:11px;color:var(--dim2);text-transform:uppercase;letter-spacing:.6px}
   .fld input{background:var(--panel2);color:var(--tx);border:1px solid var(--line);
@@ -114,6 +114,11 @@
     font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
   .go:hover{filter:brightness(1.1)}
   .go:disabled{opacity:.5;cursor:not-allowed}
+  .go.alt{background:var(--panel2);color:var(--tx);border:1px solid var(--line);font-weight:600}
+  .go.alt:hover{border-color:var(--acc);color:var(--acc);filter:none}
+  .diag{margin:0 16px 14px;background:var(--code-bg,#0d1117);border:1px solid var(--line);
+    border-radius:9px;padding:13px 15px;font-family:ui-monospace,Menlo,monospace;
+    font-size:12.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;color:var(--tx)}
   .jst{font-size:11px;padding:2px 8px;border-radius:5px;font-weight:700;white-space:nowrap}
   .jst.queued{background:rgba(255,179,64,.14);color:var(--warn)}
   .jst.running{background:rgba(91,141,255,.16);color:var(--acc)}
@@ -390,6 +395,7 @@ async function viewScan(){
         <input id="jDays" type="number" value="60" min="1" max="365">
       </div>
       <button class="go" type="submit" id="jGo">Taramayı başlat</button>
+      <button class="go alt" type="button" id="jDiag">Bağlantı testi</button>
     </form>
     <div id="jMsg"></div>
     <div style="padding:0 16px 14px;color:var(--dim2);font-size:12.5px;line-height:1.6">
@@ -403,6 +409,34 @@ async function viewScan(){
       <span class="hint" id="jHint"></span></div>
     <div id="jList"></div>
   </div>`;
+
+  $('#jDiag').onclick = async () => {
+    const btn = $('#jDiag');
+    btn.disabled = true; btn.textContent = 'test ediliyor…';
+    $('#jMsg').innerHTML = '<div class="diag">Apify\'a tek bir gerçek çağrı yapılıyor, ' +
+      'bu 1–2 dakika sürebilir…</div>';
+    try{
+      const d = await api('/api/diag/apify');
+      const satir = (k, v) => `${k.padEnd(18)}: ${v}`;
+      const lines = [
+        satir('token var mı', d.token_var ? 'evet ' + (d.token_onek||'') : 'HAYIR'),
+        satir('token geçerli', d.token_gecerli===undefined ? '—' : (d.token_gecerli?'evet':'HAYIR')),
+        d.hesap ? satir('apify hesabı', d.hesap) : null,
+        satir('aktör', d.aktor),
+        satir('günlük kullanım', `${d.gunluk_kullanim} / ${d.gunluk_butce}` + (d.butce_doldu?'  ← DOLDU':'')),
+        satir('dönen kayıt', d.kayit_sayisi ?? '—'),
+        d.cozumlenebildi!==undefined ? satir('çözümlenebildi', d.cozumlenebildi?'evet':'HAYIR') : null,
+        satir('sonuç', d.sonuc || '—'),
+        d.aciklama ? satir('açıklama', d.aciklama) : null,
+        d.ornek_tweet ? '\nörnek tweet: @' + d.ornek_tweet.hesap + ' — ' + d.ornek_tweet.metin : null,
+      ].filter(Boolean);
+      $('#jMsg').innerHTML = `<div class="diag">${esc(lines.join('\n'))}</div>`;
+    }catch(e){
+      $('#jMsg').innerHTML = `<div class="err" style="margin:0 16px 14px">${esc(e.message)}</div>`;
+    }finally{
+      btn.disabled = false; btn.textContent = 'Bağlantı testi';
+    }
+  };
 
   $('#scanForm').onsubmit = async e => {
     e.preventDefault();
