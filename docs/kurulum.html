@@ -654,6 +654,11 @@ python -m alpha_hunter inspect <b>hesapadi</b></pre></div>
         <td>Hesap senin takip etmediğin bir zincirde CA paylaşıyor</td>
         <td><code>CHAINS</code>'e o zinciri ekle (örn. <code>solana,ethereum,base</code>)
         ve tekrar tarat. Sistem adresi buluyor ama takip listende olmadığı için atıyor.</td></tr>
+      <tr><td><strong>Tarama "Hiç tweet çekilemedi" diyor</strong></td>
+        <td>Sonuç satırının altında her kaynağın ne dediği yazar</td>
+        <td><code>apify: kapali</code> → token yok ya da günlük bütçe dolmuş ·
+        <code>apify: 0 tweet</code> → aktör adı veya kredi sorunu ·
+        <code>nitter: 0 tweet</code> → ücretsiz örnekler kapalı (normal)</td></tr>
       <tr><td>Panoda hep 0 çağrı</td><td>Tweet kaynağı çalışmıyor</td>
         <td>Loglarda <code>hicbir kaynak … dondurmedi</code> ara. <code>APIFY_TOKEN</code> doğru mu?</td></tr>
       <tr><td><code>nitter ornegi basarisiz</code></td><td>Nitter örnekleri düşmüş</td>
@@ -691,7 +696,9 @@ python -m alpha_hunter inspect <b>hesapadi</b></pre></div>
       <tr><td>Daha eski verilere de bak</td><td><code>SCORE_WINDOW_DAYS</code></td><td><code>120</code> → <code>180</code></td></tr>
       <tr><td>Başka zincirleri de tara</td><td><code>CHAINS</code></td><td><code>solana</code> → <code>solana,ethereum,base</code></td></tr>
       <tr><td>Belirli hesapları takip et</td><td><code>WATCHLIST_HANDLES</code></td><td><code>hesap1,hesap2</code></td></tr>
-      <tr><td>Bot seyrek çalışsın (ucuzlasın)</td><td><code>INGEST_INTERVAL_MINUTES</code></td><td><code>10</code> → <code>20</code></td></tr>
+      <tr><td>Bot seyrek çalışsın (ucuzlasın)</td><td><code>INGEST_INTERVAL_MINUTES</code></td><td><code>10</code> → <code>30</code></td></tr>
+      <tr><td><strong>Apify faturasına tavan koy</strong></td><td><code>APIFY_DAILY_TWEET_BUDGET</code></td><td><code>4000</code> → <code>1500</code></td></tr>
+      <tr><td>Daha az sorgu tara</td><td><code>SEARCH_QUERIES</code></td><td>4 sorgu yerine 1–2 tane bırak</td></tr>
     </tbody></table></div>
 </section>
 
