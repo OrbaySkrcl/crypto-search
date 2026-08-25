@@ -514,3 +514,43 @@ async def test_log_is_not_fetched_on_success(db):
 
     assert not any(u.endswith("/log") for u in http.urls())
     assert src.last_run_log is None
+
+
+# ------------------------------------ olculmus basari tahminden once gelir
+async def test_proven_shape_is_tried_before_the_schema_guess(db):
+    """Semadan turetilen girdi bir TAHMIN; calistigi kanitlanmis bicim varsa
+    onu gecemez. Aksi halde her taramada bir fazla UCRETLI calisma olur."""
+    from alpha_hunter.ingest.apify import _remember_shape
+
+    # Aktor semasinda twitterHandles var ama gercekte yalnizca searchTerms tutuyor
+    _remember_shape("searchTerms_from")
+    http = SchemaHttp(SEMA_APIDOJO, "searchTerms")
+    src = ApifySource(http)
+    got = [t async for t in src.user_timeline("godofgem", SINCE, 10)]
+
+    assert len(got) == 1
+    assert "searchTerms" in http.denenen[0]    # ilk deneme kanitlanmis bicim
+    assert len(http.denenen) == 1              # semayi denemeye gerek kalmadi
+
+
+async def test_schema_still_used_when_nothing_proven_yet(db):
+    http = SchemaHttp(SEMA_APIDOJO, "twitterHandles")
+    src = ApifySource(http)
+    got = [t async for t in src.user_timeline("godofgem", SINCE, 10)]
+
+    assert len(got) == 1
+    assert "twitterHandles" in http.denenen[0]
+
+
+async def test_falls_through_when_proven_shape_stops_working(db):
+    """Aktor degistiyse eski bicim tutmaz; sistem yeniden ogrenmeli."""
+    from alpha_hunter.ingest.apify import _remember_shape, _remembered_shape
+
+    _remember_shape("handles_legacy")          # artik gecersiz
+    http = SchemaHttp(SEMA_APIDOJO, "searchTerms")
+    src = ApifySource(http)
+    got = [t async for t in src.user_timeline("godofgem", SINCE, 10)]
+
+    assert len(got) == 1
+    assert len(http.denenen) > 1               # eskisi denendi, sonra dogrusu bulundu
+    assert _remembered_shape() in ("schema", "searchTerms_from")

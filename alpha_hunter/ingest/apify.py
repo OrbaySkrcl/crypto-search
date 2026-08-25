@@ -404,25 +404,38 @@ class ApifySource:
     ) -> tuple[list[dict], str | None]:
         """Calisan girdi bicimini bulana kadar sirayla dener ve ogrenir."""
         notes: list[str] = []
+        remembered = _remembered_shape()
 
-        # 1) Aktorun kendi bildirdigi semadan uret -- en guvenilir yol
-        props, schema_err = await self.input_schema()
-        if props:
-            payload = payload_from_schema(props, kind, target, since, limit)
+        # 1) OLCULMUS basari her zaman once denenir. Semadan turetilen girdi
+        #    bir tahmindir; calistigi kanitlanmis bicim varsa onu gecemez.
+        #    Aksi halde her taramada bir fazla UCRETLI aktor calismasi olur.
+        if remembered and remembered != "schema":
+            build = dict(INPUT_SHAPES).get(remembered)
+            payload = build(kind, target, since, limit) if build else None
             if payload:
                 items = await self._run(payload, limit)
                 if items:
-                    _remember_shape("schema")
-                    return (items, "schema")
-                notes.append(f"schema({','.join(sorted(payload))}): {self.last_detail or 'bos'}")
-        elif schema_err:
-            notes.append(f"sema: {schema_err}")
+                    return (items, remembered)
+                notes.append(f"{remembered}: {self.last_detail or 'bos'}")
 
-        # 2) Bilinen bicimleri sirayla dene, calisani hatirla
-        remembered = _remembered_shape()
-        order = sorted(
-            INPUT_SHAPES, key=lambda sh: 0 if sh[0] == remembered else 1
-        )
+        # 2) Aktorun kendi bildirdigi semadan uret
+        if True:
+            props, schema_err = await self.input_schema()
+            if props:
+                payload = payload_from_schema(props, kind, target, since, limit)
+                if payload:
+                    items = await self._run(payload, limit)
+                    if items:
+                        _remember_shape("schema")
+                        return (items, "schema")
+                    notes.append(
+                        f"schema({','.join(sorted(payload))}): {self.last_detail or 'bos'}"
+                    )
+            elif schema_err:
+                notes.append(f"sema: {schema_err}")
+
+        # 3) Kalan bilinen bicimleri sirayla dene, calisani hatirla
+        order = [sh for sh in INPUT_SHAPES if sh[0] != remembered]
         for name, build in order:
             payload = build(kind, target, since, limit)
             if payload is None:

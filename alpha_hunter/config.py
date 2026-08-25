@@ -39,7 +39,9 @@ class Settings(BaseSettings):
         "https://nitter.privacyredirect.com,https://lightbrd.com"
     )
     apify_token: str | None = None
-    apify_actor: str = "apidojo/tweet-scraper"
+    # NOT: apidojo/tweet-scraper odemeli bir aktor ve kiralama/deneme suresi
+    # dolunca hata vermeden BOS donuyor. Lite surumu ucretsiz katmanda calisiyor.
+    apify_actor: str = "apidojo/twitter-scraper-lite"
     # Apify sonuc basina ucretlendirir. Zamanlanmis dongu her 10 dakikada bir
     # calistigi icin fatura sessizce buyuyebilir; gunluk tavan koyuyoruz.
     # 0 = sinirsiz.
