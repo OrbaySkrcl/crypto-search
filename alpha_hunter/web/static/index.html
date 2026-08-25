@@ -430,6 +430,11 @@ async function viewScan(){
         d.aciklama ? satir('açıklama', d.aciklama) : null,
         d.ornek_tweet ? '\nörnek tweet: @' + d.ornek_tweet.hesap + ' — ' + d.ornek_tweet.metin : null,
         d.calisan_bicim ? satir('çalışan giriş biçimi', d.calisan_bicim) : null,
+        (d.sema_alanlari && d.sema_alanlari.length)
+          ? '\naktörün beklediği alanlar (kendi şemasından):\n  ' + d.sema_alanlari.join(', ')
+          : (d.sema_hatasi ? satir('şema okunamadı', d.sema_hatasi) : null),
+        d.semadan_uretilen_girdi
+          ? 'şemadan üretilen giriş:\n  ' + JSON.stringify(d.semadan_uretilen_girdi) : null,
         d.hatirlanan_bicim ? satir('hatırlanan biçim', d.hatirlanan_bicim) : null,
         d.bicim_denemeleri ? '\ndenenen giriş biçimleri:\n' + d.bicim_denemeleri
           .map(r => `  ${(r.bicim+'').padEnd(20)} kayıt ${r.kayit}` +

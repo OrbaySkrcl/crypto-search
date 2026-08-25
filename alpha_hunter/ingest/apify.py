@@ -145,6 +145,83 @@ def _remember_shape(name: str) -> None:
         log.debug("apify bicimi kaydedilemedi", exc_info=True)
 
 
+# Aktorun kendi bildirdigi alan adlarini bizim kavramlarimiza esler.
+# Sirali: once tam eslesme, sonra anahtar kelime.
+_FIELD_HINTS = {
+    "query": ["searchterms", "searchqueries", "queries", "terms", "search", "keywords"],
+    "handle": ["twitterhandles", "handles", "usernames", "profiles", "users", "accounts"],
+    "url": ["starturls", "urls", "profileurls"],
+    "limit": ["maxitems", "maxtweets", "tweetsdesired", "resultslimit", "maxresults", "limit"],
+    "sort": ["sort", "querytype", "sortby"],
+    "since": ["start", "since", "startdate", "fromdate"],
+    "until": ["end", "until", "enddate", "todate"],
+}
+
+
+def _match_field(props: dict, role: str) -> str | None:
+    """Semada verilen role uyan alan adini bulur."""
+    names = list(props.keys())
+    lowered = {n.lower(): n for n in names}
+    for hint in _FIELD_HINTS.get(role, []):
+        if hint in lowered:
+            return lowered[hint]
+    for hint in _FIELD_HINTS.get(role, []):
+        for low, orig in lowered.items():
+            if hint in low:
+                return orig
+    return None
+
+
+def payload_from_schema(
+    props: dict, kind: str, target: str, since: datetime, limit: int
+) -> dict | None:
+    """Aktorun BILDIRDIGI alan adlarindan girdi uretir.
+
+    Tahmin yerine olcum: aktor kendi semasinda hangi alani bekledigini
+    soyluyor, biz de o ada gore dolduruyoruz. Yeni bir aktore gecildiginde
+    kod degistirmeye gerek kalmiyor.
+    """
+    if not props:
+        return None
+    payload: dict = {}
+
+    q_field = _match_field(props, "query")
+    h_field = _match_field(props, "handle")
+    u_field = _match_field(props, "url")
+
+    if kind == "user":
+        if h_field:
+            payload[h_field] = [target]
+        elif q_field:
+            payload[q_field] = [f"from:{target}"]
+        elif u_field:
+            payload[u_field] = [{"url": f"https://x.com/{target}"}]
+        else:
+            return None
+    else:
+        if q_field:
+            payload[q_field] = [target]
+        else:
+            return None
+
+    lim_field = _match_field(props, "limit")
+    if lim_field:
+        payload[lim_field] = limit
+
+    sort_field = _match_field(props, "sort")
+    if sort_field:
+        enum = (props.get(sort_field) or {}).get("enum")
+        payload[sort_field] = "Latest" if not enum else (
+            "Latest" if "Latest" in enum else enum[0]
+        )
+
+    since_field = _match_field(props, "since")
+    if since_field and (props.get(since_field) or {}).get("type") == "string":
+        payload[since_field] = since.strftime("%Y-%m-%d")
+
+    return payload or None
+
+
 def _is_empty_marker(items: list) -> bool:
     """apidojo bos aramayi [{"noResults": true}] olarak bildiriyor."""
     return bool(items) and all(
@@ -175,6 +252,46 @@ class ApifySource:
         return True
 
     # ------------------------------------------------------------------ #
+    async def input_schema(self) -> tuple[dict, str | None]:
+        """Aktorun bildirdigi girdi semasini Apify'dan okur.
+
+        (alanlar, hata) doner. Boylece alan adlarini tahmin etmek yerine
+        aktorun kendi beyanini kullanabiliyoruz.
+        """
+        if not self.token:
+            return ({}, "token yok")
+        auth = {"Authorization": f"Bearer {self.token}"}
+
+        info = await self.http.get(
+            f"{_BASE}/acts/{self.actor}", bucket="apify",
+            headers=auth, max_retries=1, timeout=30.0,
+        )
+        data = (info or {}).get("data") if isinstance(info, dict) else None
+        if not data:
+            return ({}, f"aktor bulunamadi: {self.actor.replace('~', '/')}")
+
+        build_id = (
+            ((data.get("taggedBuilds") or {}).get("latest") or {}).get("buildId")
+            or data.get("defaultRunOptions", {}).get("build")
+        )
+        if not build_id:
+            return ({}, "aktorun yayinlanmis derlemesi yok")
+
+        build = await self.http.get(
+            f"{_BASE}/actor-builds/{build_id}", bucket="apify",
+            headers=auth, max_retries=1, timeout=30.0,
+        )
+        raw = ((build or {}).get("data") or {}).get("inputSchema")
+        if not raw:
+            return ({}, "aktor girdi semasi yayinlamamis")
+        try:
+            import json
+
+            schema = json.loads(raw) if isinstance(raw, str) else raw
+            return (schema.get("properties") or {}, None)
+        except Exception as exc:
+            return ({}, f"sema okunamadi: {exc}")
+
     async def _run(self, payload: dict, limit: int) -> list[dict]:
         """Aktoru ASENKRON calistirir: baslat -> bitmesini bekle -> sonucu al.
 
@@ -250,11 +367,26 @@ class ApifySource:
         self, kind: str, target: str, since: datetime, limit: int
     ) -> tuple[list[dict], str | None]:
         """Calisan girdi bicimini bulana kadar sirayla dener ve ogrenir."""
+        notes: list[str] = []
+
+        # 1) Aktorun kendi bildirdigi semadan uret -- en guvenilir yol
+        props, schema_err = await self.input_schema()
+        if props:
+            payload = payload_from_schema(props, kind, target, since, limit)
+            if payload:
+                items = await self._run(payload, limit)
+                if items:
+                    _remember_shape("schema")
+                    return (items, "schema")
+                notes.append(f"schema({','.join(sorted(payload))}): {self.last_detail or 'bos'}")
+        elif schema_err:
+            notes.append(f"sema: {schema_err}")
+
+        # 2) Bilinen bicimleri sirayla dene, calisani hatirla
         remembered = _remembered_shape()
         order = sorted(
             INPUT_SHAPES, key=lambda sh: 0 if sh[0] == remembered else 1
         )
-        notes: list[str] = []
         for name, build in order:
             payload = build(kind, target, since, limit)
             if payload is None:
@@ -351,6 +483,16 @@ class ApifySource:
             out["token_gecerli"] = False
             out["sonuc"] = "Token gecersiz ya da Apify'a ulasilamiyor"
             return out
+
+        props, schema_err = await self.input_schema()
+        out["sema_alanlari"] = sorted(props.keys())[:30] if props else []
+        out["sema_hatasi"] = schema_err
+        if props:
+            # 30 gun geriden bak: "bugunden beri" arayan bir sema bos doner
+            ornek = payload_from_schema(
+                props, "user", handle, datetime.now(timezone.utc) - timedelta(days=30), 10
+            )
+            out["semadan_uretilen_girdi"] = ornek
 
         results = await self.probe(handle)
         out["bicim_denemeleri"] = results

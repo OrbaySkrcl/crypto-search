@@ -364,3 +364,105 @@ async def test_diagnose_explains_unparseable_records(db):
     assert out["kayit_sayisi"] == 1
     assert out["cozumlenebildi"] is False
     assert "cozumlenemiyor" in out["sonuc"]
+
+
+# --------------------------------------------------- semadan girdi uretimi
+SEMA_APIDOJO = {
+    "searchTerms": {"type": "array"}, "twitterHandles": {"type": "array"},
+    "maxItems": {"type": "integer"},
+    "sort": {"type": "string", "enum": ["Top", "Latest"]},
+    "start": {"type": "string"}, "end": {"type": "string"},
+}
+SEMA_STARTURLS = {"startUrls": {"type": "array"}, "maxTweets": {"type": "integer"}}
+SEMA_ESKI = {"handles": {"type": "array"}, "tweetsDesired": {"type": "integer"}}
+SEMA_KAITO = {
+    "searchQueries": {"type": "array"}, "maxResults": {"type": "integer"},
+    "queryType": {"type": "string", "enum": ["Latest"]},
+}
+
+
+@pytest.mark.parametrize("sema,beklenen_alan", [
+    (SEMA_APIDOJO, "twitterHandles"),
+    (SEMA_STARTURLS, "startUrls"),
+    (SEMA_ESKI, "handles"),
+    (SEMA_KAITO, "searchQueries"),
+])
+def test_payload_built_from_declared_schema(sema, beklenen_alan):
+    """Aktorun kendi bildirdigi alan adlarindan girdi uretilebilmeli."""
+    from alpha_hunter.ingest.apify import payload_from_schema
+
+    p = payload_from_schema(sema, "user", "godofgem", SINCE, 10)
+    assert p is not None
+    assert beklenen_alan in p
+
+
+def test_payload_from_schema_picks_latest_sort():
+    from alpha_hunter.ingest.apify import payload_from_schema
+
+    p = payload_from_schema(SEMA_APIDOJO, "user", "x", SINCE, 10)
+    assert p["sort"] == "Latest"
+    assert p["maxItems"] == 10
+
+
+def test_payload_from_schema_gives_up_on_unknown_schema():
+    from alpha_hunter.ingest.apify import payload_from_schema
+
+    assert payload_from_schema({"tamamenAlakasiz": {}}, "user", "x", SINCE, 10) is None
+    assert payload_from_schema({}, "user", "x", SINCE, 10) is None
+
+
+def test_search_kind_needs_a_query_field():
+    from alpha_hunter.ingest.apify import payload_from_schema
+
+    # handle alani var ama sorgu alani yok -> arama yapilamaz
+    assert payload_from_schema(SEMA_ESKI, "search", "pump.fun", SINCE, 10) is None
+    p = payload_from_schema(SEMA_APIDOJO, "search", "pump.fun", SINCE, 10)
+    assert p["searchTerms"] == ["pump.fun"]
+
+
+class SchemaHttp(FakeApifyHttp):
+    """Girdi semasi yayinlayan ve yalnizca o alani kabul eden aktor."""
+
+    def __init__(self, sema, kabul):
+        super().__init__()
+        self.sema = sema
+        self.kabul = kabul
+        self.denenen: list[list[str]] = []
+
+    async def get(self, url, **kw):
+        import json
+        if f"/acts/{self.actor_name()}" in url or "/acts/" in url and "/runs" not in url:
+            return {"data": {"taggedBuilds": {"latest": {"buildId": "b1"}}}}
+        if "/actor-builds/b1" in url:
+            return {"data": {"inputSchema": json.dumps({"properties": self.sema})}}
+        return await super().get(url, **kw)
+
+    def actor_name(self):
+        return "apidojo~tweet-scraper"
+
+    async def post(self, url, **kw):
+        if "/runs" in url:
+            body = kw.get("json_body") or {}
+            self.denenen.append(sorted(body.keys()))
+            self._items = ([_tweet_item(0)] if self.kabul in body else [{"noResults": True}])
+        return await super().post(url, **kw)
+
+
+async def test_schema_is_tried_before_guessing(db):
+    """Sema okunabiliyorsa ilk deneme ondan uretilmeli -- tahmin son care."""
+    http = SchemaHttp(SEMA_STARTURLS, "startUrls")
+    src = ApifySource(http)
+    got = [t async for t in src.user_timeline("godofgem", SINCE, 10)]
+
+    assert len(got) == 1
+    assert "startUrls" in http.denenen[0]      # ilk deneme semadan geldi
+    assert len(http.denenen) == 1              # tahmine hic gerek kalmadi
+
+
+async def test_diagnose_shows_declared_schema_fields(db):
+    http = SchemaHttp(SEMA_APIDOJO, "twitterHandles")
+    out = await ApifySource(http).diagnose("godofgem")
+
+    assert "twitterHandles" in out["sema_alanlari"]
+    assert out["sema_hatasi"] is None
+    assert out["semadan_uretilen_girdi"]["twitterHandles"] == ["godofgem"]
