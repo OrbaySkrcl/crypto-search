@@ -17,6 +17,12 @@ log = logging.getLogger(__name__)
 _engine: Engine | None = None
 _SessionFactory: sessionmaker[Session] | None = None
 
+# Son bilinen veritabani durumu. /health bunu okur -- canli yoklama YAPMAZ,
+# cunku ulasilamayan bir sunucu istegi zaman asimina kadar asili birakir ve
+# Railway saglik kontrolu duser.
+_db_ok: bool = False
+_db_checked_at: float = 0.0
+
 
 def get_engine() -> Engine:
     global _engine
@@ -25,7 +31,12 @@ def get_engine() -> Engine:
 
     kwargs: dict = {"echo": settings.db_echo, "future": True}
     if settings.is_postgres:
-        kwargs.update(pool_size=5, max_overflow=10, pool_pre_ping=True, pool_recycle=1800)
+        kwargs.update(
+            pool_size=5, max_overflow=10, pool_pre_ping=True, pool_recycle=1800,
+            # Ulasilamayan bir sunucuda varsayilan TCP zaman asimi ~2 dakikadir;
+            # bu, saglik kontrolunu ve acilisi kilitler.
+            connect_args={"connect_timeout": 5},
+        )
     else:
         kwargs.update(connect_args={"check_same_thread": False, "timeout": 30})
 
@@ -72,11 +83,64 @@ def init_db(drop: bool = False) -> None:
     log.info("Sema hazir: %s", settings.database_url.split("@")[-1])
 
 
+def wait_for_db(timeout: float = 90.0, interval: float = 3.0) -> bool:
+    """Veritabani ayaga kalkana kadar bekler.
+
+    Railway'de PostgreSQL eklentisi uygulamadan ~30sn sonra hazir oluyor.
+    Bu bekleme olmadan uygulama aciliste cokup yeniden baslatma dongusune giriyor.
+    """
+    import time
+
+    deadline = time.monotonic() + timeout
+    attempt = 0
+    while True:
+        if healthcheck():
+            if attempt:
+                log.info("veritabani %d denemeden sonra hazir", attempt + 1)
+            return True
+        attempt += 1
+        if time.monotonic() >= deadline:
+            log.error("veritabani %.0f saniyede hazir olmadi", timeout)
+            return False
+        log.warning("veritabani henuz hazir degil, %.0fsn sonra tekrar denenecek", interval)
+        time.sleep(interval)
+
+
+def init_db_when_ready(timeout: float = 90.0) -> bool:
+    """Baglanti kurulana kadar bekleyip semayi olusturur. Hata firlatmaz."""
+    if not wait_for_db(timeout):
+        return False
+    try:
+        init_db()
+        return True
+    except Exception:
+        log.exception("sema olusturulamadi")
+        return False
+
+
 def healthcheck() -> bool:
+    """Canli yoklama. Ulasilamayan sunucuda connect_timeout kadar surer."""
+    global _db_ok, _db_checked_at
+    import time
+
     try:
         with get_engine().connect() as c:
             c.execute(text("SELECT 1"))
-        return True
-    except Exception as exc:  # pragma: no cover
-        log.error("DB healthcheck basarisiz: %s", exc)
-        return False
+        ok = True
+    except Exception as exc:
+        log.debug("DB healthcheck basarisiz: %s", exc)
+        ok = False
+    _db_ok, _db_checked_at = ok, time.monotonic()
+    return ok
+
+
+def db_status() -> dict:
+    """Onbellekli durum -- aga hic dokunmaz, aninda doner."""
+    import time
+
+    return {
+        "ok": _db_ok,
+        "checked_seconds_ago": (
+            round(time.monotonic() - _db_checked_at, 1) if _db_checked_at else None
+        ),
+    }

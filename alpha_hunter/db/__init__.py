@@ -14,10 +14,20 @@ from .models import (
     Tweet,
     utcnow,
 )
-from .session import get_engine, get_session_factory, healthcheck, init_db, session_scope
+from .session import (
+    get_engine,
+    get_session_factory,
+    healthcheck,
+    init_db,
+    init_db_when_ready,
+    session_scope,
+    wait_for_db,
+)
 
 __all__ = [
     "Account", "AccountCluster", "AccountScore", "Alert", "Base", "Call", "CallOutcome",
     "IngestRun", "PriceSnapshot", "Tier", "Token", "TokenStatus", "Tweet", "utcnow",
-    "get_engine", "get_session_factory", "healthcheck", "init_db", "session_scope",
+    "db_status", "get_engine", "get_session_factory", "healthcheck", "init_db",
+    "init_db_when_ready",
+    "session_scope", "wait_for_db",
 ]

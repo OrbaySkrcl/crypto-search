@@ -286,6 +286,7 @@ Eşiği değiştirmek istersen `ALERT_MIN_ALPHA_SCORE` değişkenini düşür
 
 | Belirti | Sebep | Çözüm |
 |---|---|---|
+| **Deploy logları tamamen boş** | Build aşamasında patladı, deploy hiç başlamadı | Railway'de **Deployments → ilgili dağıtım → Build Logs** sekmesine bak (Deploy Logs değil). Gerçek hata orada. |
 | Panoda hep 0 çağrı | Tweet kaynağı çalışmıyor | Railway loglarında `hicbir kaynak ... veri dondurmedi` ara. `APIFY_TOKEN` doğru mu? |
 | Loglarda `nitter ornegi basarisiz` | Nitter örnekleri düşmüş | Normal. `TWEET_SOURCES=apify,nitter` yaptıysan Apify devralır. |
 | Telegram mesajı gelmiyor | Token/chat_id yanlış, veya henüz 65+ hesap yok | Önce `ALERT_MIN_ALPHA_SCORE=0` yapıp test et, sonra geri al. |

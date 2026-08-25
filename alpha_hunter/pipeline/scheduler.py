@@ -6,6 +6,7 @@ import logging
 import signal
 
 from ..config import settings
+from ..db.session import init_db_when_ready
 from .alerts import alert_fresh_calls, send_leaderboard
 from .enrich import run_enrich
 from .ingest import run_ingest
@@ -41,12 +42,32 @@ async def _score_tick() -> None:
     await asyncio.get_running_loop().run_in_executor(None, run_scoring)
 
 
+async def _ensure_db(stop: asyncio.Event) -> None:
+    """Semayi arka planda hazirlar.
+
+    Railway'de PostgreSQL uygulamadan sonra ayaga kalkiyor. Bunu ON PLANDA
+    beklemek web sunucusunu geciktirir ve saglik kontrolu zaman asimina ugrar,
+    o yuzden bekleme buraya alindi. Is donguleri hazir olana kadar hata verip
+    bir sonraki turda tekrar dener -- kendini toparlar.
+    """
+    loop = asyncio.get_running_loop()
+    for attempt in range(1, 6):
+        if stop.is_set():
+            return
+        ok = await loop.run_in_executor(None, init_db_when_ready, 60.0)
+        if ok:
+            log.info("veritabani hazir, sema dogrulandi")
+            return
+        log.error("veritabanina baglanilamadi (deneme %d/5)", attempt)
+    log.error("veritabani ulasilamaz durumda -- DATABASE_URL'i kontrol et")
+
+
 def _make_web_server():
     """uvicorn kurulu degilse pano sessizce atlanir, isci calismaya devam eder."""
     try:
         import uvicorn
 
-        from ..web.app import app as web_app
+        from ..web.server import app as web_app
     except ImportError:
         log.warning("uvicorn/fastapi kurulu degil, web panosu atlaniyor")
         return None
@@ -77,7 +98,10 @@ async def run_forever() -> None:
     )
 
     tasks = [
-        asyncio.create_task(_loop("ingest", _ingest_tick, settings.ingest_interval_minutes * 60, stop)),
+        asyncio.create_task(_ensure_db(stop)),
+        asyncio.create_task(
+            _loop("ingest", _ingest_tick, settings.ingest_interval_minutes * 60, stop, jitter=8)
+        ),
         asyncio.create_task(
             _loop("enrich", run_enrich, settings.enrich_interval_minutes * 60, stop, jitter=45)
         ),

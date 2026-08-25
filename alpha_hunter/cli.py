@@ -364,7 +364,7 @@ async def cmd_alert(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    from .web.app import serve
+    from .web.server import serve
     _print(f"[green]pano aciliyor:[/green] http://localhost:{args.port or settings.web_port}")
     if not settings.web_password:
         _print("[yellow]uyari: WEB_PASSWORD bos — pano sifresiz. Internete acacaksan doldur.[/yellow]")
@@ -373,8 +373,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 async def cmd_run(args: argparse.Namespace) -> int:
+    # Sema hazirligi run_forever icinde arka planda yapilir; burada beklemek
+    # web panosunu geciktirir ve Railway saglik kontrolunu dusurur.
     from .pipeline.scheduler import run_forever
-    init_db()
     await run_forever()
     return 0
 
@@ -451,7 +452,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     setup_logging(args.log_level)
-    if args.cmd not in ("initdb", "doctor"):
+    # `run` ve `serve` semayi kendileri ARKA PLANDA hazirlar. Burada beklemek,
+    # veritabani gec kalktiginda sureci tek satir log bile basmadan kilitler --
+    # Railway'de bos deploy logunun sebeplerinden biri tam olarak budur.
+    if args.cmd not in ("initdb", "doctor", "run", "serve"):
         init_db()
     try:
         if args.is_async:

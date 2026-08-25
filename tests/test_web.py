@@ -14,7 +14,7 @@ NOW = datetime.now(timezone.utc)
 
 @pytest.fixture()
 def client(db):
-    from alpha_hunter.web.app import create_app
+    from alpha_hunter.web.server import create_app
     return TestClient(create_app())
 
 
@@ -46,14 +46,67 @@ def seeded(db):
                 outcome=CallOutcome.WIN if won else CallOutcome.LOSS, is_closed=True,
             ))
     run_scoring()
-    from alpha_hunter.web.app import create_app
+    from alpha_hunter.web.server import create_app
     return TestClient(create_app())
 
 
 def test_health(client):
+    from alpha_hunter.db.session import healthcheck
+    healthcheck()                     # onbellegi tazele
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json()["ok"] is True
+    assert r.json()["db"] is True
+
+
+def test_health_stays_200_when_db_is_down(client, monkeypatch):
+    """Railway saglik kontrolu 'konteyner yanit veriyor mu' diye sorar.
+    Veritabani birkac saniye gec kalksa dagitim basarisiz sayilmamali."""
+    monkeypatch.setattr("alpha_hunter.web.server.healthcheck", lambda: False)
+    monkeypatch.setattr(
+        "alpha_hunter.web.server.db_status",
+        lambda: {"ok": False, "checked_seconds_ago": 3.0},
+    )
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True and r.json()["db"] is False
+    # kati uc ise 503 dondurur
+    assert client.get("/health/db").status_code == 503
+
+
+def test_health_never_probes_the_database(client, monkeypatch):
+    """Ulasilamayan bir sunucuda canli yoklama istegi kilitler; /health
+    onbellekten okumali ve healthcheck()'i HIC cagirmamali."""
+    called = {"n": 0}
+
+    def boom():
+        called["n"] += 1
+        raise AssertionError("/health canli yoklama yapmamali")
+
+    monkeypatch.setattr("alpha_hunter.web.server.healthcheck", boom)
+    assert client.get("/health").status_code == 200
+    assert called["n"] == 0
+
+
+def test_wait_for_db_retries_then_succeeds(monkeypatch):
+    from alpha_hunter.db import session as sess
+
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        return calls["n"] >= 3
+
+    monkeypatch.setattr(sess, "healthcheck", flaky)
+    assert sess.wait_for_db(timeout=30.0, interval=0.0) is True
+    assert calls["n"] == 3
+
+
+def test_wait_for_db_gives_up_and_returns_false(monkeypatch):
+    from alpha_hunter.db import session as sess
+
+    monkeypatch.setattr(sess, "healthcheck", lambda: False)
+    assert sess.wait_for_db(timeout=0.0, interval=0.0) is False
 
 
 def test_index_serves_dashboard(client):
@@ -115,7 +168,7 @@ def test_calls_validation(client):
 def test_password_protection(db, monkeypatch):
     monkeypatch.setattr(settings, "web_password", "gizli")
     monkeypatch.setattr(settings, "web_user", "admin")
-    from alpha_hunter.web.app import create_app
+    from alpha_hunter.web.server import create_app
     c = TestClient(create_app())
     assert c.get("/api/overview").status_code == 401
     assert c.get("/api/overview", auth=("admin", "yanlis")).status_code == 401

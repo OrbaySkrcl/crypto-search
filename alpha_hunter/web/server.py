@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from ..config import settings
-from ..db.session import healthcheck, init_db, session_scope
+from ..db.session import db_status, healthcheck, init_db_when_ready, session_scope
 from . import queries
 
 log = logging.getLogger(__name__)
@@ -43,11 +43,34 @@ def _check_auth(credentials: HTTPBasicCredentials | None = Depends(_security)) -
         )
 
 
+def _log_db_result(fut) -> None:
+    if fut.cancelled():
+        return
+    exc = fut.exception()
+    if exc is not None:
+        log.error("sema hazirligi basarisiz: %s", exc)
+    elif fut.result():
+        log.info("veritabani hazir, sema dogrulandi")
+    else:
+        log.error("veritabanina baglanilamadi -- DATABASE_URL'i kontrol et")
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    init_db()
-    log.info("web panosu hazir")
-    yield
+    # Sema hazirligi ON PLANDA beklenmez: uvicorn startup bitmeden baglanti
+    # kabul etmez, bu da Railway saglik kontrolunu zaman asimina ugratir.
+    # Sema ya zamanlayici tarafindan ya da asagidaki arka plan gorevi ile kurulur.
+    import asyncio
+
+    # run_in_executor zaten isi zamanlar ve bir Future dondurur -- create_task
+    # coroutine bekledigi icin buraya sarmalanmaz.
+    fut = asyncio.get_running_loop().run_in_executor(None, init_db_when_ready, 120.0)
+    fut.add_done_callback(_log_db_result)
+    log.info("web panosu acildi")
+    try:
+        yield
+    finally:
+        fut.cancel()
 
 
 def create_app() -> FastAPI:
@@ -102,6 +125,21 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health() -> JSONResponse:
+        """Surec ayaktaysa 200 doner; veritabani durumu govdede raporlanir.
+
+        Kasitli olarak veritabanina baglanamasa bile 200 doner: Railway bu ucu
+        'konteyner yanit veriyor mu' diye sorar, veritabani birkac saniye sonra
+        hazir olacaksa dagitimi basarisiz saymamali.
+
+        Veritabani durumu ONBELLEKTEN okunur; canli yoklama yapilsa ulasilamayan
+        bir sunucuda istek zaman asimina kadar asili kalir ve kontrol yine duser.
+        """
+        st = db_status()
+        return JSONResponse({"ok": True, "db": st["ok"], "db_checked_ago": st["checked_seconds_ago"]})
+
+    @app.get("/health/db")
+    def health_db() -> JSONResponse:
+        """Kati kontrol: veritabani erisilebilir degilse 503."""
         ok = healthcheck()
         return JSONResponse({"ok": ok}, status_code=200 if ok else 503)
 
