@@ -1,5 +1,8 @@
 # Adım adım kurulum ve kullanım
 
+> Bu rehberin tarayıcıda okunan, işaretlenebilir hâli:
+> [`docs/kurulum.html`](kurulum.html) — indirip çift tıklayarak açabilirsin.
+
 Bu rehber **kodlama bilmediğini** varsayarak yazıldı. Kopyala-yapıştır yaparak
 ilerleyebilirsin. Toplam süre: yaklaşık **45 dakika**.
 

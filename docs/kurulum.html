@@ -1,0 +1,794 @@
+<title>Alpha Hunter Kurulumu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;600&display=swap">
+
+<style>
+:root{
+  --ground:#FBFAF7; --surface:#FFFFFF; --surface2:#F4F2EC;
+  --ink:#141A22; --ink2:#39424E; --muted:#6B7482; --line:#E3E0D7; --line2:#EEECE5;
+  --accent:#0F6E5C; --accent-soft:#E4F0EC; --accent-ink:#0B5548;
+  --warn:#9A5B08; --warn-soft:#FBF0DE; --warn-line:#E8C88A;
+  --danger:#9E2B33; --danger-soft:#FBE9E9; --danger-line:#EBBFC1;
+  --code-bg:#151B23; --code-ink:#DDE3EA; --code-dim:#7E8B9C; --code-key:#7FD1BB;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1116; --surface:#151A21; --surface2:#1B212A;
+    --ink:#E9EBEE; --ink2:#C2C8D1; --muted:#8B95A3; --line:#252C36; --line2:#1E242C;
+    --accent:#46C4A6; --accent-soft:#12271F; --accent-ink:#5FD3B7;
+    --warn:#E3A94B; --warn-soft:#251C0D; --warn-line:#4A3919;
+    --danger:#E8767E; --danger-soft:#2A1315; --danger-line:#4D2226;
+    --code-bg:#0A0D12; --code-ink:#DDE3EA; --code-dim:#6C7787; --code-key:#7FD1BB;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1116; --surface:#151A21; --surface2:#1B212A;
+  --ink:#E9EBEE; --ink2:#C2C8D1; --muted:#8B95A3; --line:#252C36; --line2:#1E242C;
+  --accent:#46C4A6; --accent-soft:#12271F; --accent-ink:#5FD3B7;
+  --warn:#E3A94B; --warn-soft:#251C0D; --warn-line:#4A3919;
+  --danger:#E8767E; --danger-soft:#2A1315; --danger-line:#4D2226;
+  --code-bg:#0A0D12; --code-ink:#DDE3EA; --code-dim:#6C7787; --code-key:#7FD1BB;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"Source Serif 4",Georgia,"Times New Roman",serif;
+  font-size:17px; line-height:1.66; -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4,.ui{font-family:Archivo,"Helvetica Neue",Arial,sans-serif}
+code,kbd,pre,.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace}
+
+/* ---------------------------------------------------------------- layout */
+.shell{display:grid; grid-template-columns:236px minmax(0,1fr); gap:52px;
+  max-width:1160px; margin:0 auto; padding:0 24px 120px}
+main{max-width:70ch; min-width:0}
+
+/* ------------------------------------------------------------------ rail */
+.rail{position:sticky; top:0; align-self:start; height:100dvh; padding:38px 0 40px;
+  display:flex; flex-direction:column; gap:22px; overflow-y:auto}
+.mark{display:flex; align-items:baseline; gap:7px; font-family:Archivo,sans-serif;
+  font-weight:800; font-size:15px; letter-spacing:-.3px}
+.mark b{color:var(--accent)}
+.rail nav{display:flex; flex-direction:column; gap:1px; border-left:2px solid var(--line)}
+.rail a{display:flex; gap:10px; padding:7px 0 7px 14px; margin-left:-2px;
+  border-left:2px solid transparent; color:var(--muted); text-decoration:none;
+  font-family:Archivo,sans-serif; font-size:13.5px; line-height:1.35}
+.rail a:hover{color:var(--ink)}
+.rail a.on{color:var(--ink); border-left-color:var(--accent); font-weight:600}
+.rail a i{font-style:normal; font-variant-numeric:tabular-nums; color:var(--muted);
+  font-size:11.5px; padding-top:2px; min-width:11px}
+.rail a.on i{color:var(--accent)}
+.rail .foot{margin-top:auto; font-family:Archivo,sans-serif; font-size:12px; color:var(--muted)}
+.rail .foot button{background:none; border:1px solid var(--line); color:var(--muted);
+  border-radius:6px; padding:5px 9px; font:inherit; cursor:pointer}
+.rail .foot button:hover{color:var(--ink); border-color:var(--muted)}
+
+/* --------------------------------------------------------------- header */
+header{padding:76px 0 6px}
+.eyebrow{font-family:Archivo,sans-serif; font-size:11.5px; font-weight:700;
+  letter-spacing:1.4px; text-transform:uppercase; color:var(--accent); margin-bottom:16px}
+h1{font-size:clamp(38px,6vw,58px); line-height:1.02; font-weight:800; letter-spacing:-1.6px;
+  margin:0 0 20px; text-wrap:balance}
+.lede{font-size:20px; line-height:1.58; color:var(--ink2); margin:0; text-wrap:pretty}
+
+/* ---------------------------------------------------------------- paths */
+.paths{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:34px 0 0}
+.path{border:1px solid var(--line); border-radius:11px; padding:18px 19px; background:var(--surface)}
+.path.pick{border-color:var(--accent); background:var(--accent-soft)}
+.path .tag{font-family:Archivo,sans-serif; font-size:10.5px; font-weight:700;
+  letter-spacing:1.1px; text-transform:uppercase; color:var(--muted); margin-bottom:7px}
+.path.pick .tag{color:var(--accent-ink)}
+.path h4{margin:0 0 9px; font-size:17px; font-weight:700; letter-spacing:-.3px}
+.path ul{margin:0; padding-left:17px; font-size:14.5px; line-height:1.62; color:var(--ink2)}
+
+/* -------------------------------------------------------------- section */
+section{padding-top:64px; scroll-margin-top:24px}
+h2{font-size:11.5px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
+  color:var(--muted); margin:0 0 8px; display:flex; align-items:center; gap:11px}
+h2::after{content:""; flex:1; height:1px; background:var(--line)}
+h3{font-size:29px; font-weight:800; letter-spacing:-.8px; line-height:1.16;
+  margin:0 0 18px; text-wrap:balance}
+h4{font-size:17.5px; font-weight:700; letter-spacing:-.25px; margin:34px 0 10px}
+p{margin:0 0 15px; text-wrap:pretty}
+a{color:var(--accent); text-underline-offset:2px}
+strong{font-weight:600; color:var(--ink)}
+
+/* ---------------------------------------------------------------- steps */
+.step{position:relative; padding-left:46px; margin:30px 0}
+.step::before{content:attr(data-n); position:absolute; left:0; top:1px;
+  width:29px; height:29px; border-radius:50%; background:var(--surface);
+  border:1.5px solid var(--line); color:var(--muted);
+  font-family:Archivo,sans-serif; font-weight:700; font-size:12.5px;
+  display:flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums}
+.step.done::before{background:var(--accent); border-color:var(--accent); color:#fff}
+.step h4{margin:2px 0 8px; font-size:17.5px}
+.step > p:last-child{margin-bottom:0}
+
+/* ------------------------------------------------------------ checklist */
+.check{display:flex; gap:12px; align-items:flex-start; padding:13px 15px;
+  border:1px solid var(--line); border-radius:9px; background:var(--surface); margin-bottom:8px;
+  cursor:pointer; transition:border-color .12s, background .12s}
+.check:hover{border-color:var(--muted)}
+.check input{margin:4px 0 0; width:17px; height:17px; accent-color:var(--accent); cursor:pointer; flex:none}
+.check .t{display:block; font-family:Archivo,sans-serif; font-size:14.5px; font-weight:600; line-height:1.4}
+.check .d{display:block; font-size:13.5px; color:var(--muted); line-height:1.45; margin-top:3px}
+.check.ok{background:var(--accent-soft); border-color:var(--accent)}
+.check.ok .t{text-decoration:line-through; text-decoration-color:var(--muted); opacity:.72}
+
+/* ----------------------------------------------------------------- code */
+.code{position:relative; margin:15px 0; border-radius:9px; overflow:hidden;
+  background:var(--code-bg); border:1px solid var(--line)}
+.code .bar{display:flex; align-items:center; gap:8px; padding:8px 11px;
+  border-bottom:1px solid rgba(255,255,255,.07)}
+.code .bar span{font-family:Archivo,sans-serif; font-size:10.5px; font-weight:600;
+  letter-spacing:.9px; text-transform:uppercase; color:var(--code-dim)}
+.code button{margin-left:auto; background:rgba(255,255,255,.07); border:none;
+  color:var(--code-ink); border-radius:5px; padding:4px 10px; cursor:pointer;
+  font-family:Archivo,sans-serif; font-size:11.5px; font-weight:600}
+.code button:hover{background:rgba(255,255,255,.14)}
+.code button.ok{background:var(--accent); color:#fff}
+.code pre{margin:0; padding:13px 15px; overflow-x:auto; color:var(--code-ink);
+  font-size:13px; line-height:1.72}
+.code pre b{color:var(--code-key); font-weight:400}
+.code pre i{color:var(--code-dim); font-style:normal}
+code:not(pre code){background:var(--surface2); border:1px solid var(--line2);
+  padding:1px 5px; border-radius:4px; font-size:.85em; color:var(--ink)}
+
+/* ------------------------------------------------------------- callouts */
+.note{border:1px solid var(--line); border-left:3px solid var(--accent);
+  background:var(--surface); border-radius:0 9px 9px 0; padding:14px 17px; margin:19px 0}
+.note.warn{border-left-color:var(--warn); background:var(--warn-soft); border-color:var(--warn-line)}
+.note.stop{border-left-color:var(--danger); background:var(--danger-soft); border-color:var(--danger-line)}
+.note .h{font-family:Archivo,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.1px;
+  text-transform:uppercase; color:var(--accent); margin-bottom:5px}
+.note.warn .h{color:var(--warn)} .note.stop .h{color:var(--danger)}
+.note p{margin:0; font-size:15.5px; line-height:1.6}
+.note p + p{margin-top:9px}
+
+/* ------------------------------------------------------------- timeline */
+.tl{margin:26px 0 8px}
+.tl-track{display:grid; grid-template-columns:repeat(6,1fr); gap:0; margin-bottom:6px}
+.tl-track div{height:7px; background:var(--line);
+  border-right:2px solid var(--ground)}
+.tl-track div:first-child{border-radius:4px 0 0 4px}
+.tl-track div:last-child{border-radius:0 4px 4px 0; border-right:none}
+.tl-track div.f1{background:color-mix(in oklab,var(--accent) 18%,var(--line))}
+.tl-track div.f2{background:color-mix(in oklab,var(--accent) 34%,var(--line))}
+.tl-track div.f3{background:color-mix(in oklab,var(--accent) 50%,var(--line))}
+.tl-track div.f4{background:color-mix(in oklab,var(--accent) 68%,var(--line))}
+.tl-track div.f5{background:color-mix(in oklab,var(--accent) 84%,var(--line))}
+.tl-track div.f6{background:var(--accent)}
+.tl-rows{display:flex; flex-direction:column}
+.tl-row{display:grid; grid-template-columns:118px 1fr; gap:16px;
+  padding:11px 0; border-bottom:1px solid var(--line2)}
+.tl-row:last-child{border-bottom:none}
+.tl-when{font-family:Archivo,sans-serif; font-weight:700; font-size:13.5px;
+  color:var(--accent); padding-top:1px}
+.tl-what{font-size:15.5px; line-height:1.55; color:var(--ink2)}
+
+/* --------------------------------------------------------------- tables */
+.tw{overflow-x:auto; margin:19px 0; border:1px solid var(--line);
+  border-radius:9px; background:var(--surface)}
+table{width:100%; border-collapse:collapse; font-size:15px}
+th{font-family:Archivo,sans-serif; font-size:11px; font-weight:700; letter-spacing:.9px;
+  text-transform:uppercase; color:var(--muted); text-align:left; padding:11px 14px;
+  border-bottom:1px solid var(--line); white-space:nowrap}
+td{padding:11px 14px; border-bottom:1px solid var(--line2); vertical-align:top; line-height:1.5}
+tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+.tier{display:inline-block; min-width:20px; text-align:center; padding:1px 6px; border-radius:4px;
+  font-family:Archivo,sans-serif; font-size:11.5px; font-weight:700}
+
+/* ----------------------------------------------------------------- misc */
+.kbd{font-family:Archivo,sans-serif; font-size:12px; font-weight:600; background:var(--surface2);
+  border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:2px 6px}
+hr{border:none; border-top:1px solid var(--line); margin:52px 0 0}
+.close{margin-top:60px; padding:26px 28px; border:1px solid var(--line);
+  border-radius:12px; background:var(--surface2)}
+.close .q{font-size:21px; line-height:1.45; font-weight:600; margin:0 0 12px;
+  letter-spacing:-.3px; text-wrap:balance}
+.close p{font-size:15.5px; color:var(--ink2); margin:0}
+:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:3px}
+
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr; gap:0}
+  .rail{position:sticky; top:0; height:auto; flex-direction:row; align-items:center; gap:14px;
+    padding:11px 0; background:var(--ground); border-bottom:1px solid var(--line); z-index:9}
+  .rail nav{flex-direction:row; border-left:none; overflow-x:auto; gap:3px; flex:1;
+    scrollbar-width:none}
+  .rail nav::-webkit-scrollbar{display:none}
+  .rail a{padding:5px 10px; margin-left:0; border-left:none; border-radius:6px;
+    white-space:nowrap; background:var(--surface2)}
+  .rail a.on{background:var(--accent); color:#fff}
+  .rail a.on i{color:rgba(255,255,255,.72)}
+  .rail .foot{display:none}
+  header{padding:38px 0 30px}
+  .paths{grid-template-columns:1fr}
+  .tl-row{grid-template-columns:1fr; gap:2px}
+  body{font-size:16.5px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important; scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<div class="shell">
+
+<aside class="rail">
+  <div class="mark">ALPHA<b>HUNTER</b></div>
+  <nav id="nav">
+    <a href="#hazirlik"><i>1</i>Hazırlık</a>
+    <a href="#railway"><i>2</i>Railway'e kur</a>
+    <a href="#bekle"><i>3</i>Ne bekleyeceksin</a>
+    <a href="#oku"><i>4</i>Panoyu okumak</a>
+    <a href="#sorun"><i>5</i>Sorun giderme</a>
+    <a href="#ayar"><i>6</i>Ayarlar</a>
+    <a href="#lokal"><i>+</i>Kendi bilgisayarın</a>
+  </nav>
+  <div class="foot">
+    <button type="button" id="reset">İşaretleri sıfırla</button>
+  </div>
+</aside>
+
+<main>
+
+<header>
+  <div class="eyebrow">Kurulum rehberi · ~45 dakika</div>
+  <h1>Botu sıfırdan ayağa kaldırmak</h1>
+  <p class="lede">Kodlama bilmediğini varsayarak yazıldı. Kopyala‑yapıştır ile
+  ilerleyebilirsin — hiçbir adımda kod yazmayacaksın.</p>
+
+  <div class="paths">
+    <div class="path pick">
+      <div class="tag">Önerilen · Yol A</div>
+      <h4>Railway</h4>
+      <ul>
+        <li>Bilgisayarın kapalı olabilir</li>
+        <li>Hep tarayıcıdan, terminal yok</li>
+        <li>Ayda ~5&nbsp;$</li>
+      </ul>
+    </div>
+    <div class="path">
+      <div class="tag">Yol B</div>
+      <h4>Kendi bilgisayarın</h4>
+      <ul>
+        <li>Bilgisayar 7/24 açık kalmalı</li>
+        <li>Terminal komutları gerekir</li>
+        <li>Ücretsiz</li>
+      </ul>
+    </div>
+  </div>
+</header>
+
+<!-- ================================================================ 1 -->
+<section id="hazirlik">
+  <h2>Bölüm 1</h2>
+  <h3>Önce anahtarları topla</h3>
+  <p>Kuruluma başlamadan bunları hazırla. Hepsini bir not defterine yapıştır —
+  birazdan tek tek gireceksin. <strong>Topladıkça aşağıdaki kutuları işaretle</strong>,
+  sayfa hatırlar.</p>
+
+  <label class="check" data-k="tg">
+    <input type="checkbox">
+    <span><span class="t">Telegram bot token + chat id</span>
+    <span class="d">Zorunlu · 5 dk · ücretsiz</span></span>
+  </label>
+  <label class="check" data-k="ap">
+    <input type="checkbox">
+    <span><span class="t">Apify token</span>
+    <span class="d">Şiddetle önerilir · 5 dk · ~5 $/ay</span></span>
+  </label>
+  <label class="check" data-k="be">
+    <input type="checkbox">
+    <span><span class="t">Birdeye API anahtarı</span>
+    <span class="d">Önerilir · 3 dk · ücretsiz katman var</span></span>
+  </label>
+  <label class="check" data-k="he">
+    <input type="checkbox">
+    <span><span class="t">Helius API anahtarı</span>
+    <span class="d">İsteğe bağlı · 3 dk · ücretsiz</span></span>
+  </label>
+  <label class="check" data-k="pw">
+    <input type="checkbox">
+    <span><span class="t">Pano şifresi (kendin uydur)</span>
+    <span class="d">Zorunlu · 10 saniye</span></span>
+  </label>
+
+  <h4>1.1 · Telegram botu</h4>
+  <p>Alarmların telefonuna düşmesi için. Bu olmadan sistem sana hiçbir şey söylemez.</p>
+
+  <div class="step" data-n="1">
+    <h4>BotFather'ı bul</h4>
+    <p>Telegram'da arama kutusuna <code>@BotFather</code> yaz, mavi tikli olanı aç.</p>
+  </div>
+  <div class="step" data-n="2">
+    <h4>Yeni bot oluştur</h4>
+    <p><code>/newbot</code> yaz ve gönder. Bir isim ver (örn. <em>Alpha Hunter</em>),
+    sonra bir kullanıcı adı ver — <strong>mutlaka <code>bot</code> ile bitmeli</strong>
+    (örn. <code>benim_alpha_hunter_bot</code>).</p>
+  </div>
+  <div class="step" data-n="3">
+    <h4>Token'ı kopyala</h4>
+    <p>BotFather sana şuna benzer bir şey verecek. Bu senin
+    <code>TELEGRAM_BOT_TOKEN</code>'ın:</p>
+    <div class="code"><div class="bar"><span>token</span></div><pre>8123456789:AAHk3xY_pQrStUvWxYz1234567890abcdefg</pre></div>
+    <div class="note stop"><div class="h">Kimseyle paylaşma</div>
+    <p>Bu token şifre gibidir. Eline geçen kişi senin botunu kontrol eder.</p></div>
+  </div>
+  <div class="step" data-n="4">
+    <h4>Kendi chat id'ni bul</h4>
+    <p>Yeni botunu kullanıcı adıyla ara, aç, <span class="kbd">Start</span>'a bas ve
+    bir mesaj yaz — "merhaba" yeter. Sonra tarayıcıda şu adresi aç
+    (<code>&lt;TOKEN&gt;</code> yerine yukarıdakini yapıştır):</p>
+    <div class="code"><div class="bar"><span>tarayıcıda aç</span>
+      <button type="button" data-copy="https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates">Kopyala</button></div>
+      <pre>https://api.telegram.org/bot<b>&lt;TOKEN&gt;</b>/getUpdates</pre></div>
+    <p>Karışık bir metin çıkacak. İçinde şunu ara — <code>id</code> yanındaki sayı
+    senin <code>TELEGRAM_CHAT_ID</code>'in:</p>
+    <div class="code"><div class="bar"><span>çıktı</span></div><pre>"chat":{"id":<b>123456789</b>,"first_name":...</pre></div>
+    <div class="note warn"><div class="h">Boş çıktı görüyorsan</div>
+    <p><code>{"ok":true,"result":[]}</code> görüyorsan bota mesaj atmayı unutmuşsundur.
+    Mesaj at, sayfayı yenile.</p></div>
+  </div>
+
+  <h4>1.2 · Apify</h4>
+  <p>Twitter'dan veri çekmek için. Ücretsiz alternatifi (Nitter) var ama sürekli düşüyor —
+  sistemin gerçekten çalışması için buna ihtiyacın olacak.</p>
+  <div class="step" data-n="1">
+    <h4>Kaydol</h4>
+    <p><a href="https://apify.com" target="_blank" rel="noopener">apify.com</a> →
+    <strong>Sign up</strong> (Google ile giriş yapabilirsin).</p>
+  </div>
+  <div class="step" data-n="2">
+    <h4>Token'ı al</h4>
+    <p>Sol menüden <strong>Settings</strong> → <strong>API &amp; Integrations</strong> →
+    <em>Personal API token</em> kutusundaki uzun metni kopyala
+    (<code>apify_api_</code> ile başlar). Bu senin <code>APIFY_TOKEN</code>'ın.</p>
+  </div>
+  <div class="note"><div class="h">Bütçe</div>
+  <p>Ücretsiz katman ayda 5&nbsp;$ kredi veriyor; bot 10 dakikada bir çalıştığında bu
+  genelde yetmez. Ayda ~5–15&nbsp;$ ayırmayı bekle. Bütçen yoksa
+  <code>TWEET_SOURCES=nitter</code> bırak — sistem yine çalışır ama veri düzensiz gelir.</p></div>
+
+  <h4>1.3 · Birdeye</h4>
+  <p>Fiyat geçmişini hassas almak için. Olmazsa sistem GeckoTerminal'i kullanır:
+  ücretsiz ama yavaş.
+  <a href="https://bds.birdeye.so" target="_blank" rel="noopener">bds.birdeye.so</a> →
+  kaydol → <strong>API Keys</strong> → yeni anahtar → kopyala.
+  Bu <code>BIRDEYE_API_KEY</code>.</p>
+
+  <h4>1.4 · Helius</h4>
+  <p>Scam token tespiti için (mint yetkisi, cüzdan yoğunluğu). Olmazsa herkese açık
+  Solana RPC'si kullanılır — yavaş ama çalışır.
+  <a href="https://dashboard.helius.dev" target="_blank" rel="noopener">dashboard.helius.dev</a>
+  → kaydol → ana ekrandaki <strong>API Key</strong>'i kopyala.
+  Bu <code>HELIUS_API_KEY</code>.</p>
+
+  <h4>1.5 · Pano şifresi</h4>
+  <p>Kendin uydur. Örneğin <code>Kahve!2026_Panom</code>. Bu <code>WEB_PASSWORD</code>.</p>
+  <div class="note stop"><div class="h">Boş bırakma</div>
+  <p>Şifresiz bırakırsan bulduğun alfa hesapları internette herkese açık olur —
+  yani bütün emeğin başkasının eline geçer.</p></div>
+</section>
+
+<!-- ================================================================ 2 -->
+<section id="railway">
+  <h2>Bölüm 2</h2>
+  <h3>Railway'e kur</h3>
+  <p>Buradan sonrası tamamen tarayıcıdan. Yaklaşık 15 dakika.</p>
+
+  <div class="step" data-n="1">
+    <h4>Projeyi oluştur</h4>
+    <p><a href="https://railway.app" target="_blank" rel="noopener">railway.app</a> →
+    <strong>Login with GitHub</strong> → <strong>New Project</strong> →
+    <strong>Deploy from GitHub repo</strong>. Erişim izni ver, sonra
+    <code>OrbaySkrcl/crypto-search</code> deposunu seç.</p>
+    <div class="note warn"><div class="h">İlk kurulum hata verirse normal</div>
+    <p>Veritabanı ve ayarlar henüz yok. Sıradaki iki adım bunu düzeltecek.</p></div>
+  </div>
+
+  <div class="step" data-n="2">
+    <h4>Veritabanı ekle</h4>
+    <p>Aynı proje ekranında <strong>+ Create</strong> (veya <strong>+ New</strong>) →
+    <strong>Database</strong> → <strong>Add PostgreSQL</strong>.</p>
+    <p>Bitti. Railway bağlantıyı kendisi kurar, sen bir şey yapmayacaksın.</p>
+  </div>
+
+  <div class="step" data-n="3">
+    <h4>Ayarları gir</h4>
+    <p>Soldaki <strong>crypto-search</strong> servisine tıkla (veritabanına değil) →
+    <strong>Variables</strong> → <strong>Raw Editor</strong>. Aşağıdakini yapıştır ve
+    <b>BURAYA</b> yazan yerleri kendi değerlerinle doldur.</p>
+    <div class="code">
+      <div class="bar"><span>Railway → Variables → Raw Editor</span>
+        <button type="button" data-copy="CHAINS=solana
+TWEET_SOURCES=apify,nitter
+APIFY_TOKEN=apify_api_BURAYA_SENIN_TOKENIN
+BIRDEYE_API_KEY=BURAYA_SENIN_ANAHTARIN
+HELIUS_API_KEY=BURAYA_SENIN_ANAHTARIN
+
+TELEGRAM_BOT_TOKEN=BURAYA_SENIN_TOKENIN
+TELEGRAM_CHAT_ID=BURAYA_SENIN_CHAT_IDIN
+ALERTS_ENABLED=true
+ALERT_MIN_ALPHA_SCORE=65
+
+WEB_ENABLED=true
+WEB_USER=admin
+WEB_PASSWORD=BURAYA_KENDI_SIFREN
+
+SEARCH_QUERIES=pump.fun/coin | dexscreener.com/solana | &quot;CA:&quot; solana | &quot;contract:&quot; solana
+
+INGEST_INTERVAL_MINUTES=10
+ENRICH_INTERVAL_MINUTES=5
+SCORE_INTERVAL_MINUTES=60
+LOG_LEVEL=INFO">Kopyala</button></div>
+<pre>CHAINS=solana
+TWEET_SOURCES=apify,nitter
+APIFY_TOKEN=apify_api_<b>BURAYA_SENIN_TOKENIN</b>
+BIRDEYE_API_KEY=<b>BURAYA_SENIN_ANAHTARIN</b>
+HELIUS_API_KEY=<b>BURAYA_SENIN_ANAHTARIN</b>
+
+TELEGRAM_BOT_TOKEN=<b>BURAYA_SENIN_TOKENIN</b>
+TELEGRAM_CHAT_ID=<b>BURAYA_SENIN_CHAT_IDIN</b>
+ALERTS_ENABLED=true
+ALERT_MIN_ALPHA_SCORE=65
+
+WEB_ENABLED=true
+WEB_USER=admin
+WEB_PASSWORD=<b>BURAYA_KENDI_SIFREN</b>
+
+SEARCH_QUERIES=pump.fun/coin | dexscreener.com/solana | "CA:" solana | "contract:" solana
+
+INGEST_INTERVAL_MINUTES=10
+ENRICH_INTERVAL_MINUTES=5
+SCORE_INTERVAL_MINUTES=60
+LOG_LEVEL=INFO</pre></div>
+    <p><strong>Deploy</strong> / <strong>Save</strong> de. Railway yeniden kuracak.</p>
+    <div class="note warn"><div class="h">Anahtarın yoksa satırı sil</div>
+    <p>Örneğin Birdeye almadıysan <code>BIRDEYE_API_KEY</code> satırını
+    <strong>tamamen sil</strong> — boş bırakma.</p></div>
+  </div>
+
+  <div class="step" data-n="4">
+    <h4>Panoya adres ver</h4>
+    <p>Aynı serviste <strong>Settings</strong> → aşağı in → <strong>Networking</strong> →
+    <strong>Generate Domain</strong>. Sana şuna benzer bir adres verecek:</p>
+    <div class="code"><div class="bar"><span>panonun adresi</span></div>
+      <pre>crypto-search-production-a1b2.up.railway.app</pre></div>
+    <p>Tarayıcıda aç. Kullanıcı adı <code>admin</code>, şifre senin
+    <code>WEB_PASSWORD</code>'ün. Panoyu görüyorsan <strong>kurulum bitti.</strong></p>
+  </div>
+
+  <div class="step" data-n="5">
+    <h4>Çalıştığını doğrula</h4>
+    <p><strong>Deployments</strong> → en üstteki dağıtıma tıkla → <strong>Logs</strong>.
+    Şu satırı ara:</p>
+    <div class="code"><div class="bar"><span>loglar</span></div>
+      <pre><i>INFO</i> Alpha Hunter calisiyor | zincir=solana kaynak=apify,nitter
+     | ingest 10dk, enrich 5dk, score 60dk</pre></div>
+    <p>Bu satır varsa bot ayakta ve tweet toplamaya başladı.</p>
+  </div>
+</section>
+
+<!-- ================================================================ 3 -->
+<section id="bekle">
+  <h2>Bölüm 3</h2>
+  <h3>Ne bekleyeceksin</h3>
+  <p>Bu en önemli bölüm. <strong>Sistem ilk gün sana bir şey söylemez</strong> —
+  ve bu bir hata değil, tasarımın kendisi.</p>
+
+  <div class="tl">
+    <div class="tl-track" aria-hidden="true">
+      <div class="f1"></div><div class="f2"></div><div class="f3"></div>
+      <div class="f4"></div><div class="f5"></div><div class="f6"></div>
+    </div>
+    <div class="tl-rows">
+      <div class="tl-row"><div class="tl-when">İlk 10 dakika</div>
+        <div class="tl-what">Bot tweet toplamaya başlar. Panoda "çağrı" sayısı artar.</div></div>
+      <div class="tl-row"><div class="tl-when">İlk 1–2 saat</div>
+        <div class="tl-what">İlk kontratlar doğrulanır, fiyatları çekilir. "Son çağrılar" dolar.</div></div>
+      <div class="tl-row"><div class="tl-when">İlk 24 saat</div>
+        <div class="tl-what">Çağrılar <em>izleniyor</em> durumunda. Henüz kimse puanlanmadı.</div></div>
+      <div class="tl-row"><div class="tl-when">2–3 gün</div>
+        <div class="tl-what">İlk skorlar çıkar. Çoğu hesap <strong>UNRATED</strong> veya
+          <strong>F</strong> olur — bu doğru davranış.</div></div>
+      <div class="tl-row"><div class="tl-when">1–2 hafta</div>
+        <div class="tl-what">Tablo anlamlanır. B ve C tier hesaplar belirir.</div></div>
+      <div class="tl-row"><div class="tl-when">1 ay ve sonrası</div>
+        <div class="tl-what">A/S tier hesaplar ortaya çıkar. Telegram alarmları gelmeye başlar.</div></div>
+    </div>
+  </div>
+
+  <h4>Neden bu kadar sürüyor?</h4>
+  <p>Çünkü sistem bir hesabı puanlamadan önce onun çağrılarının <em>ne olduğunu</em>
+  görmek zorunda. Bir çağrı <strong>7 gün</strong> izlenir. Bir hesabın puan alması için
+  <strong>en az 4 tamamlanmış çağrısı</strong> olmalı. Yani matematiksel olarak minimum
+  7 gün, pratikte 2–4 hafta.</p>
+  <div class="note"><div class="h">Bunu bir kusur sanma</div>
+  <p>Hemen sonuç veren bir sistem, sonucu uydurdu demektir. Beklemenin kendisi
+  algoritmanın çalıştığının kanıtı.</p></div>
+
+  <h4>Hemen bir şey görmek istersen</h4>
+  <p>Bildiğin bir hesabı geçmişe dönük taratabilirsin. Bunun için Yol B'yi
+  (kendi bilgisayarın) sadece bu iş için kullan:</p>
+  <div class="code"><div class="bar"><span>terminal</span>
+    <button type="button" data-copy="python -m alpha_hunter backfill hesapadi --days 60
+python -m alpha_hunter inspect hesapadi">Kopyala</button></div>
+<pre>python -m alpha_hunter backfill <b>hesapadi</b> --days 60
+python -m alpha_hunter inspect <b>hesapadi</b></pre></div>
+  <p>Bu, o hesabın 60 günlük tüm çağrılarını, giriş fiyatlarını ve sonuçlarını döker.
+  Birkaç dakika sürebilir.</p>
+</section>
+
+<!-- ================================================================ 4 -->
+<section id="oku">
+  <h2>Bölüm 4</h2>
+  <h3>Panoyu okumak</h3>
+
+  <h4>Liderlik tablosu</h4>
+  <p>Her satır bir Twitter hesabı. <strong>Alfa</strong> sütunu 0–100 arası tek bir puan.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Tier</th><th>Puan</th><th>Ne demek</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tier" style="background:var(--accent-soft);color:var(--accent-ink)">S</span></td><td>80+</td><td>İstatistiksel olarak olağanüstü. Çok nadir.</td></tr>
+      <tr><td><span class="tier" style="background:var(--accent-soft);color:var(--accent-ink)">A</span></td><td>65+</td><td>Güçlü. Takip etmeye değer.</td></tr>
+      <tr><td><span class="tier" style="background:var(--surface2);color:var(--ink2)">B</span></td><td>50+</td><td>İyi.</td></tr>
+      <tr><td><span class="tier" style="background:var(--surface2);color:var(--ink2)">C</span></td><td>35+</td><td>Ortalama.</td></tr>
+      <tr><td><span class="tier" style="background:var(--warn-soft);color:var(--warn)">D</span></td><td>20+</td><td>Zayıf.</td></tr>
+      <tr><td><span class="tier" style="background:var(--danger-soft);color:var(--danger)">F</span></td><td>20 altı</td><td>Gürültü.</td></tr>
+      <tr><td><span class="tier" style="background:var(--surface2);color:var(--muted)">—</span></td><td>UNRATED</td><td>Henüz 4 tamamlanmış çağrısı yok.</td></tr>
+    </tbody></table></div>
+
+  <p><strong>Asıl bakman gereken üç sütun:</strong></p>
+  <div class="tw"><table>
+    <thead><tr><th>Sütun</th><th>Ne söyler</th></tr></thead>
+    <tbody>
+      <tr><td><strong>giriş kal.</strong></td><td>Yüksekse coin'ler uçmadan önce tweetliyor.
+        30'un altıysa zirveye yakın tweetliyor — yani <strong>copycat</strong>.</td></tr>
+      <tr><td><strong>özgünlük</strong></td><td>100'e yakınsa kontratları ilk o buluyor.
+        Düşükse başkasından kopyalıyor.</td></tr>
+      <tr><td><strong>çağrı/gün</strong></td><td>3'ün üstü şüpheli, 10'un üstü kumarbaz.
+        Günde 30 CA atan insider değildir.</td></tr>
+    </tbody></table></div>
+
+  <p>İki işaret var: <strong>⚠</strong> bu hesabın başkalarıyla aynı coinleri aynı
+  dakikalarda paylaştığını gösterir — muhtemelen bir promo ağının parçası, bağımsız
+  sinyal sayma. <strong>⛔</strong> spam nedeniyle kara listede demektir.</p>
+  <p>Bir hesaba tıklarsan tüm çağrı geçmişi açılır: her coin'e kaçta girdi, ne kadar
+  yaptı, kaçıncı sırada paylaştı.</p>
+
+  <h4>Son çağrılar</h4>
+  <p>Canlı akış. <strong>gerçekçi</strong> sütunu <strong>ATH</strong> sütunundan daha
+  önemli — ATH kağıt üzerindedir, 30 saniye görülen bir fiyattan satamazsın.
+  "gerçekçi" en az 15 dakika korunan tepeyi gösterir.</p>
+  <p><strong>güvenlik</strong> 0–100 arası: mint yetkisi kapalı mı, ilk 10 cüzdan ne
+  kadar tutuyor, RugCheck ne diyor. 30'un altı tehlikeli.</p>
+
+  <h4>Telegram alarmları</h4>
+  <p>Alfa skoru 65'in üstündeki bir hesap yeni bir kontrat paylaştığında telefonuna
+  şu düşer:</p>
+  <div class="code"><div class="bar"><span>telegram</span></div>
+<pre>🟢 <b>A TIER CAGRI</b>
+👤 @hesapadi · alfa 71.3
+📊 win 64% (9/14) · medyan 8.20x · 1.2 cagri/gun
+
+🪙 <b>SYMBOL</b>  EKpQGSJt...zcjm
+⛓ solana · MC $84K · likidite $31K
+🛡 guvenlik 78/100
+⏱ token yasi 2.4 saat
+🥇 bu CA'yi cagiran 1. hesap
+
+🔗 tweet · dexscreener</pre></div>
+  <p>Daha çok alarm istersen <code>ALERT_MIN_ALPHA_SCORE</code>'u düşür (örn. <code>50</code>)
+  — ama kalite düşer.</p>
+</section>
+
+<!-- ================================================================ 5 -->
+<section id="sorun">
+  <h2>Bölüm 5</h2>
+  <h3>Sorun giderme</h3>
+  <p>Logları okumak için: Railway → servis → <strong>Deployments</strong> → en üstteki →
+  <strong>Logs</strong>. İçinde <code>ERROR</code> veya <code>WARNING</code> ara.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Belirti</th><th>Sebep</th><th>Çözüm</th></tr></thead>
+    <tbody>
+      <tr><td>Panoda hep 0 çağrı</td><td>Tweet kaynağı çalışmıyor</td>
+        <td>Loglarda <code>hicbir kaynak … dondurmedi</code> ara. <code>APIFY_TOKEN</code> doğru mu?</td></tr>
+      <tr><td><code>nitter ornegi basarisiz</code></td><td>Nitter örnekleri düşmüş</td>
+        <td>Normal. <code>TWEET_SOURCES=apify,nitter</code> ise Apify devralır.</td></tr>
+      <tr><td>Telegram mesajı gelmiyor</td><td>Token/chat id yanlış, ya da henüz 65+ hesap yok</td>
+        <td>Geçici olarak <code>ALERT_MIN_ALPHA_SCORE=0</code> yapıp test et, sonra geri al.</td></tr>
+      <tr><td>Pano "Giriş gerekli" diyor</td><td>Şifre koruması aktif</td>
+        <td>Kullanıcı adı <code>admin</code>, şifre senin <code>WEB_PASSWORD</code>'ün.</td></tr>
+      <tr><td>Panoya hiç erişemiyorum</td><td>Domain oluşturulmamış</td>
+        <td>Settings → Networking → Generate Domain</td></tr>
+      <tr><td>"Application failed to respond"</td><td>Bot henüz açılıyor</td>
+        <td>1–2 dakika bekle, sonra logları kontrol et.</td></tr>
+      <tr><td>Herkes UNRATED</td><td>Yeterli veri yok</td>
+        <td>Bekle. Bu doğru davranış — Bölüm 3'e bak.</td></tr>
+      <tr><td>Çağrılar hep "geçersiz"</td><td>Fiyat verisi alınamıyor</td>
+        <td><code>BIRDEYE_API_KEY</code> ekle. Ücretsiz kaynak yetişemiyor olabilir.</td></tr>
+      <tr><td>Railway faturası şişti</td><td>Bot çok sık çalışıyor</td>
+        <td><code>INGEST_INTERVAL_MINUTES=20</code> yap.</td></tr>
+    </tbody></table></div>
+</section>
+
+<!-- ================================================================ 6 -->
+<section id="ayar">
+  <h2>Bölüm 6</h2>
+  <h3>Ayarları kendine göre değiştirmek</h3>
+  <p>Railway → <strong>Variables</strong> → değiştir → <strong>Deploy</strong>.
+  Kod bilmene gerek yok.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Ne istiyorsun</th><th>Değişken</th><th>Ne yap</th></tr></thead>
+    <tbody>
+      <tr><td>Daha çok alarm gelsin</td><td><code>ALERT_MIN_ALPHA_SCORE</code></td><td><code>65</code> → <code>50</code></td></tr>
+      <tr><td>Sadece çok erken çağrılara bak</td><td><code>ALERT_MAX_ENTRY_MC_USD</code></td><td><code>3000000</code> → <code>500000</code></td></tr>
+      <tr><td>"Başarılı" eşiğini yükselt</td><td><code>WIN_MULTIPLE</code></td><td><code>3.0</code> → <code>5.0</code></td></tr>
+      <tr><td>Spam filtresini sıkılaştır</td><td><code>SPRAY_SOFT_CALLS_PER_DAY</code></td><td><code>3</code> → <code>2</code></td></tr>
+      <tr><td>Daha eski verilere de bak</td><td><code>SCORE_WINDOW_DAYS</code></td><td><code>120</code> → <code>180</code></td></tr>
+      <tr><td>Base zincirini de tara</td><td><code>CHAINS</code></td><td><code>solana</code> → <code>solana,base</code></td></tr>
+      <tr><td>Belirli hesapları takip et</td><td><code>WATCHLIST_HANDLES</code></td><td><code>hesap1,hesap2</code></td></tr>
+      <tr><td>Bot seyrek çalışsın (ucuzlasın)</td><td><code>INGEST_INTERVAL_MINUTES</code></td><td><code>10</code> → <code>20</code></td></tr>
+    </tbody></table></div>
+</section>
+
+<!-- ================================================================ + -->
+<section id="lokal">
+  <h2>Ek</h2>
+  <h3>Kendi bilgisayarına kurmak</h3>
+  <p>Sadece denemek veya <code>backfill</code> çalıştırmak istiyorsan. Gerçek kullanım
+  için Railway'i öneriyorum — bilgisayar kapanınca bot durur ve veri toplamaz.</p>
+
+  <h4>Windows</h4>
+  <p>Önce <a href="https://python.org/downloads" target="_blank" rel="noopener">python.org/downloads</a>
+  → Python 3.11+ indir. <strong>Kurulumda "Add Python to PATH" kutusunu mutlaka işaretle.</strong>
+  Sonra <a href="https://git-scm.com/download/win" target="_blank" rel="noopener">Git'i</a>
+  kur (hep İleri). Başlat menüsüne <code>cmd</code> yaz, Komut İstemi'ni aç ve yapıştır:</p>
+  <div class="code"><div class="bar"><span>komut istemi</span>
+    <button type="button" data-copy="cd %USERPROFILE%\Desktop
+git clone https://github.com/OrbaySkrcl/crypto-search.git
+cd crypto-search
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt">Kopyala</button></div>
+<pre>cd %USERPROFILE%\Desktop
+git clone https://github.com/OrbaySkrcl/crypto-search.git
+cd crypto-search
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt</pre></div>
+
+  <h4>Mac</h4>
+  <p>Terminal'i aç (Spotlight → <code>Terminal</code>) ve yapıştır:</p>
+  <div class="code"><div class="bar"><span>terminal</span>
+    <button type="button" data-copy="cd ~/Desktop
+git clone https://github.com/OrbaySkrcl/crypto-search.git
+cd crypto-search
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt">Kopyala</button></div>
+<pre>cd ~/Desktop
+git clone https://github.com/OrbaySkrcl/crypto-search.git
+cd crypto-search
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt</pre></div>
+  <div class="note warn"><div class="h">git bulunamadı derse</div>
+  <p><code>xcode-select --install</code> yaz, kurulumu bekle, sonra tekrar dene.</p></div>
+
+  <h4>Ayarları gir ve çalıştır</h4>
+  <p><code>crypto-search</code> klasöründeki <code>.env.example</code> dosyasını kopyala,
+  kopyanın adını <code>.env</code> yap. Not defteriyle aç, Bölüm 1'de topladığın
+  anahtarları karşılıklarına yapıştır, kaydet. Sonra:</p>
+  <div class="code"><div class="bar"><span>terminal</span>
+    <button type="button" data-copy="python -m alpha_hunter initdb
+python -m alpha_hunter doctor
+python -m alpha_hunter run">Kopyala</button></div>
+<pre>python -m alpha_hunter initdb   <i># veritabanını kur (bir kez)</i>
+python -m alpha_hunter doctor   <i># her şey bağlanıyor mu?</i>
+python -m alpha_hunter run      <i># bot + pano</i></pre></div>
+  <p>Tarayıcıda <code>http://localhost:8000</code> adresini aç. Durdurmak için terminalde
+  <span class="kbd">Ctrl</span>+<span class="kbd">C</span>.</p>
+</section>
+
+<hr>
+
+<div class="close">
+  <p class="q">Bu sistem korelasyon bulur, insider olduğunu kanıtlamaz.</p>
+  <p>Yüksek skorlu bir hesap içeriden bilgi alıyor olabilir, güçlü bir network'ü olabilir,
+  ya da sadece çok iyi olabilir. Sistemin söylediği tek şey şu:
+  <em>"Bu hesabın geçmiş çağrıları rastgele şansla açıklanamıyor."</em>
+  Daha fazlası değil. Bir hesabın S tier olması, bir sonraki çağrısının tutacağı anlamına
+  gelmez. Bu bir araştırma aracıdır, yatırım tavsiyesi değildir.</p>
+</div>
+
+</main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // --- kopyala düğmeleri -------------------------------------------------
+  document.querySelectorAll("[data-copy]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var text = btn.getAttribute("data-copy");
+      var done = function(){
+        var old = btn.textContent;
+        btn.textContent = "Kopyalandı"; btn.classList.add("ok");
+        setTimeout(function(){ btn.textContent = old; btn.classList.remove("ok"); }, 1600);
+      };
+      var fallback = function(){
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.setAttribute("readonly","");
+        ta.style.cssText = "position:absolute;left:-9999px";
+        document.body.appendChild(ta); ta.select();
+        var ok = false;
+        try { ok = document.execCommand("copy"); } catch(e){ ok = false; }
+        document.body.removeChild(ta);
+        if(ok){ done(); }
+        else {
+          // son çare: metni seçili bırak, kullanıcı kendi kopyalasın
+          var pre = btn.closest(".code").querySelector("pre");
+          var r = document.createRange(); r.selectNodeContents(pre);
+          var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+          btn.textContent = "Seçildi — Ctrl+C";
+          setTimeout(function(){ btn.textContent = "Kopyala"; }, 2600);
+        }
+      };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } else { fallback(); }
+    });
+  });
+
+  // --- kontrol listesi (tarayıcıda saklanır) ------------------------------
+  var KEY = "ah_prep_v1";
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch(e){ saved = {}; }
+
+  var boxes = Array.prototype.slice.call(document.querySelectorAll(".check"));
+  function paint(row){
+    row.classList.toggle("ok", row.querySelector("input").checked);
+  }
+  boxes.forEach(function(row){
+    var k = row.getAttribute("data-k");
+    var input = row.querySelector("input");
+    if(saved[k]) input.checked = true;
+    paint(row);
+    input.addEventListener("change", function(){
+      saved[k] = input.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch(e){}
+      paint(row);
+    });
+  });
+  var reset = document.getElementById("reset");
+  if(reset){
+    reset.addEventListener("click", function(){
+      saved = {};
+      try { localStorage.removeItem(KEY); } catch(e){}
+      boxes.forEach(function(row){ row.querySelector("input").checked = false; paint(row); });
+    });
+  }
+
+  // --- okunan bölümü rayda işaretle ---------------------------------------
+  var links = Array.prototype.slice.call(document.querySelectorAll("#nav a"));
+  var map = {};
+  links.forEach(function(a){ map[a.getAttribute("href").slice(1)] = a; });
+  var secs = Array.prototype.slice.call(document.querySelectorAll("section[id]"));
+
+  if("IntersectionObserver" in window){
+    var seen = {};
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ seen[en.target.id] = en.isIntersecting; });
+      var active = null;
+      secs.forEach(function(s){ if(seen[s.id] && !active) active = s.id; });
+      links.forEach(function(a){ a.classList.remove("on"); });
+      if(active && map[active]) map[active].classList.add("on");
+    }, { rootMargin: "-15% 0px -70% 0px", threshold: 0 });
+    secs.forEach(function(s){ io.observe(s); });
+  }
+})();
+</script>
