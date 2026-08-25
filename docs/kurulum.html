@@ -593,6 +593,9 @@ python -m alpha_hunter inspect <b>hesapadi</b></pre></div>
   <div class="tw"><table>
     <thead><tr><th>Belirti</th><th>Sebep</th><th>Çözüm</th></tr></thead>
     <tbody>
+      <tr><td><strong>Deploy logları tamamen boş</strong></td><td>Build aşamasında patladı — deploy hiç başlamadı</td>
+        <td>Railway'de <strong>Deployments</strong> → ilgili dağıtım → <strong>Build Logs</strong>
+        sekmesine bak, <em>Deploy Logs</em>'a değil. Gerçek hata orada yazar.</td></tr>
       <tr><td>Panoda hep 0 çağrı</td><td>Tweet kaynağı çalışmıyor</td>
         <td>Loglarda <code>hicbir kaynak … dondurmedi</code> ara. <code>APIFY_TOKEN</code> doğru mu?</td></tr>
       <tr><td><code>nitter ornegi basarisiz</code></td><td>Nitter örnekleri düşmüş</td>
