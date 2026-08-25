@@ -18,6 +18,54 @@ log = logging.getLogger(__name__)
 _BASE = "https://api.apify.com/v2"
 
 
+def _budget_key() -> str:
+    return f"apify_usage_{datetime.now(timezone.utc):%Y-%m-%d}"
+
+
+def budget_used() -> int:
+    """Bugun Apify'dan kac tweet cekildi."""
+    from ..db.models import AppState
+    from ..db.session import session_scope
+
+    try:
+        with session_scope() as s:
+            row = s.get(AppState, _budget_key())
+            return int(row.value) if row and row.value else 0
+    except Exception:
+        return 0
+
+
+def budget_exhausted() -> bool:
+    cap = settings.apify_daily_tweet_budget
+    return cap > 0 and budget_used() >= cap
+
+
+def _consume_budget(n: int) -> None:
+    if n <= 0 or settings.apify_daily_tweet_budget <= 0:
+        return
+    from ..db.models import AppState, utcnow
+    from ..db.session import session_scope
+
+    try:
+        with session_scope() as s:
+            key = _budget_key()
+            row = s.get(AppState, key)
+            if row is None:
+                s.add(AppState(key=key, value=str(n)))
+                total = n
+            else:
+                total = int(row.value or 0) + n
+                row.value = str(total)
+                row.updated_at = utcnow()
+        cap = settings.apify_daily_tweet_budget
+        if total >= cap:
+            log.warning("gunluk Apify butcesi doldu: %d/%d tweet", total, cap)
+        elif total >= cap * 0.8:
+            log.info("Apify gunluk kullanim: %d/%d tweet", total, cap)
+    except Exception:
+        log.debug("apify butce sayaci guncellenemedi", exc_info=True)
+
+
 class ApifySource:
     name = "apify"
 
@@ -25,9 +73,19 @@ class ApifySource:
         self.http = http
         self.token = token or settings.apify_token
         self.actor = (actor or settings.apify_actor).replace("/", "~")
+        self.last_detail: str | None = None
 
     async def available(self) -> bool:
-        return bool(self.token)
+        if not self.token:
+            self.last_detail = "APIFY_TOKEN tanimli degil"
+            return False
+        if budget_exhausted():
+            self.last_detail = (
+                f"gunluk Apify butcesi doldu ({settings.apify_daily_tweet_budget} tweet). "
+                "APIFY_DAILY_TWEET_BUDGET ile artirabilirsin."
+            )
+            return False
+        return True
 
     async def _run(self, payload: dict, limit: int) -> list[dict]:
         if not self.token:
@@ -72,22 +130,60 @@ class ApifySource:
             "start": since.strftime("%Y-%m-%d_%H:%M:%S_UTC"),
             "includeSearchTerms": False,
         }
-        for item in await self._run(payload, limit):
+        items = await self._run(payload, limit)
+        got = 0
+        for item in items:
             t = _normalise(item)
             if t and t.posted_at >= since:
+                got += 1
                 yield t
+        _consume_budget(got)
 
     async def user_timeline(self, handle: str, since: datetime, limit: int = 100) -> AsyncIterator[RawTweet]:
-        payload = {
-            "twitterHandles": [handle],
-            "maxItems": limit,
-            "sort": "Latest",
-            "start": since.strftime("%Y-%m-%d_%H:%M:%S_UTC"),
-        }
-        for item in await self._run(payload, limit):
-            t = _normalise(item)
-            if t and t.posted_at >= since:
-                yield t
+        """Once twitterHandles, olmazsa 'from:' aramasi.
+
+        Aktorden aktore girdi semasi degisiyor: bazilari `twitterHandles`
+        anlamiyor, hepsi `searchTerms` anliyor. Tek bicime guvenmek, hesabin
+        gercekten tweet atmis olmasina ragmen bos donmesine yol aciyordu.
+        """
+        attempts = [
+            ("twitterHandles", {
+                "twitterHandles": [handle],
+                "maxItems": limit,
+                "sort": "Latest",
+                "start": since.strftime("%Y-%m-%d"),
+            }),
+            ("searchTerms from:", {
+                "searchTerms": [f"from:{handle}"],
+                "maxItems": limit,
+                "sort": "Latest",
+                "start": since.strftime("%Y-%m-%d"),
+            }),
+        ]
+        for label, payload in attempts:
+            items = await self._run(payload, limit)
+            if not items:
+                log.info("apify @%s: '%s' bicimi bos dondu", handle, label)
+                continue
+            yielded = 0
+            for item in items:
+                t = _normalise(item)
+                if t and t.posted_at >= since:
+                    yielded += 1
+                    yield t
+            if yielded:
+                self.last_detail = None
+                _consume_budget(yielded)
+                return
+            self.last_detail = (
+                f"{len(items)} kayit geldi ama hicbiri son {(datetime.now(timezone.utc) - since).days} "
+                "gun icinde degil ya da bicimi taninmadi"
+            )
+        if not self.last_detail:
+            self.last_detail = (
+                "her iki girdi bicimi de bos dondu — aktor adi yanlis, kredi bitmis "
+                "ya da hesap korumali/askida olabilir"
+            )
 
 
 # --------------------------------------------------------------------------- #

@@ -25,6 +25,7 @@ class TwscrapeSource:
     def __init__(self, db_path: str | None = None) -> None:
         self.db_path = db_path or settings.twscrape_db
         self._api: Any = None
+        self.last_detail: str | None = None
 
     async def available(self) -> bool:
         try:

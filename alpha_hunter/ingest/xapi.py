@@ -22,6 +22,7 @@ class XApiSource:
     def __init__(self, http: HttpClient, bearer: str | None = None) -> None:
         self.http = http
         self.bearer = bearer or settings.x_bearer_token
+        self.last_detail: str | None = None
 
     async def available(self) -> bool:
         return bool(self.bearer)

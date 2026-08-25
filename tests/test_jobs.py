@@ -169,12 +169,14 @@ def test_diagnose_wrong_chain_is_the_first_suspect(monkeypatch):
 
 
 def test_diagnose_no_tweets_points_at_the_source():
+    """Kaynak kaydi varsa onu aktarir; tahmin yurutmez."""
     msg = jobq.diagnose_empty_result({
         "tweets_seen": 0, "tweets_with_ca": 0, "ca_candidates": 0,
         "skipped_wrong_chain": 0, "chains_seen": {},
+        "source_attempts": ["apify: kapali", "nitter: 0 tweet — hicbiri yanit vermedi"],
     })
-    assert "hic tweet cekilemedi" in msg
-    assert "APIFY_TOKEN" in msg
+    assert "Hic tweet cekilemedi" in msg
+    assert "apify: kapali" in msg
 
 
 def test_diagnose_tweets_but_no_contract():
@@ -204,3 +206,30 @@ def test_slim_stats_keeps_only_diagnostic_fields():
         "tweets_seen", "tweets_with_ca", "ca_candidates",
         "calls_new", "skipped_wrong_chain", "chains_seen",
     }
+
+
+def test_diagnose_relays_what_each_source_actually_said():
+    """Tahmin yurutmek yerine kaynaklarin kendi acikladigi sebebi aktar."""
+    msg = jobq.diagnose_empty_result({
+        "tweets_seen": 0, "tweets_with_ca": 0, "ca_candidates": 0,
+        "skipped_wrong_chain": 0, "chains_seen": {},
+        "source_attempts": [
+            "apify: 0 tweet — her iki girdi bicimi de bos dondu",
+            "nitter: 0 tweet — 5 nitter ornegi denendi, hicbiri yanit vermedi",
+        ],
+    })
+    assert "apify" in msg and "nitter" in msg
+    assert "girdi bicimi" in msg
+
+
+def test_diagnose_when_no_source_was_even_tried():
+    msg = jobq.diagnose_empty_result({
+        "tweets_seen": 0, "tweets_with_ca": 0, "ca_candidates": 0,
+        "skipped_wrong_chain": 0, "chains_seen": {}, "source_attempts": [],
+    })
+    assert "TWEET_SOURCES" in msg
+
+
+def test_slim_stats_carries_source_attempts():
+    slim = jobq._slim_stats({"tweets_seen": 0, "source_attempts": ["apify: kapali"]})
+    assert slim["source_attempts"] == ["apify: kapali"]

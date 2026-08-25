@@ -32,9 +32,36 @@ class RawTweet:
     raw: dict | None = None
 
 
+@dataclass
+class SourceAttempt:
+    """Bir kaynagin tek bir denemesinin sonucu.
+
+    Sifir donusun SEBEBINI tasir: kaynak kapali miydi, hata mi verdi, yoksa
+    calisip bos mu dondu? Uc durumun cozumu de farkli, o yuzden ayirt edilmeli.
+    """
+
+    source: str
+    target: str
+    count: int = 0
+    skipped: bool = False        # kaynak kapali (anahtar yok vb.)
+    error: str | None = None
+    detail: str | None = None    # kaynagin kendi acikladigi sebep
+
+    def summary(self) -> str:
+        if self.skipped:
+            return f"{self.source}: kapali"
+        if self.error:
+            return f"{self.source}: hata — {self.error}"
+        if self.count:
+            return f"{self.source}: {self.count} tweet"
+        return f"{self.source}: 0 tweet" + (f" — {self.detail}" if self.detail else "")
+
+
 @runtime_checkable
 class TweetSource(Protocol):
     name: str
+    # Kaynak son cagrida neyin ters gittigini buraya yazar
+    last_detail: str | None
 
     async def search(self, query: str, since: datetime, limit: int) -> AsyncIterator[RawTweet]:
         ...

@@ -341,6 +341,7 @@ katı orada görünür.
 | **Loglarda `sqlite3.OperationalError`** | PostgreSQL bağlı değil, bot konteyner içindeki dosyaya yazıyor | Railway'de veritabanı eklentisi var mı bak. Yoksa **+ Create → Database → Add PostgreSQL**. **Veri her deploy'da siliniyor demektir — acil.** |
 | **Loglarda sürekli `hicbir ornek yanit vermedi`** | Nitter örnekleri ölü, veri gelmiyor | `APIFY_TOKEN` gir ve `TWEET_SOURCES=apify,nitter` yap. Nitter tek başına çalışmıyor. |
 | **Tarama "X kontrat bulundu ama … zincirinde" diyor** | Hesap senin takip etmediğin bir zincirde CA paylaşıyor | `CHAINS` değişkenine o zinciri ekle (örn. `solana,ethereum,base`) ve tekrar tarat. |
+| **Tarama "Hiç tweet çekilemedi" diyor** | Sonuç satırının altında her kaynağın ne dediği yazar | `apify: kapali` → token yok veya günlük bütçe dolmuş · `apify: 0 tweet` → aktör adı/kredi sorunu · `nitter: 0 tweet` → ücretsiz örnekler kapalı (normal) |
 | Panoda hep 0 çağrı | Tweet kaynağı çalışmıyor | Railway loglarında `hicbir kaynak ... veri dondurmedi` ara. `APIFY_TOKEN` doğru mu? |
 | Loglarda `nitter ornegi basarisiz` | Nitter örnekleri düşmüş | Normal. `TWEET_SOURCES=apify,nitter` yaptıysan Apify devralır. |
 | Telegram mesajı gelmiyor | Token/chat_id yanlış, veya henüz 65+ hesap yok | Önce `ALERT_MIN_ALPHA_SCORE=0` yapıp test et, sonra geri al. |
@@ -369,7 +370,10 @@ Railway → **Variables** → değiştir → **Deploy**. Kod bilmene gerek yok.
 | Daha eski verilere de bak | `SCORE_WINDOW_DAYS` | `120` → `180` |
 | Başka zincirleri de tara | `CHAINS` | `solana` → `solana,ethereum,base` |
 | Belirli hesapları takip et | `WATCHLIST_HANDLES` | `hesap1,hesap2,hesap3` |
-| Bot daha seyrek çalışsın (ucuzlasın) | `INGEST_INTERVAL_MINUTES` | `10` → `20` |
+| Bot daha seyrek çalışsın (ucuzlasın) | `INGEST_INTERVAL_MINUTES` | `10` → `30` |
+| Apify faturasına tavan koy | `APIFY_DAILY_TWEET_BUDGET` | `4000` → `1500` |
+| Daha az sorgu tara (ucuzlasın) | `SEARCH_QUERIES` | 4 sorgu yerine 1–2 tane bırak |
+| Tur başına daha az tweet çek | `INGEST_MAX_TWEETS_PER_RUN` | `800` → `200` |
 
 ---
 

@@ -34,6 +34,7 @@ class NitterSource:
         self.http = http
         self.instances = instances or settings.nitter_list
         self._penalty: dict[str, float] = {}
+        self.last_detail: str | None = None
 
     # ------------------------------------------------------------------ #
     def _ordered(self) -> list[str]:
@@ -45,7 +46,10 @@ class NitterSource:
         self._penalty[inst] = time.monotonic() + _COOLDOWN_SEC
 
     async def _fetch_rss(self, path: str) -> str | None:
+        self.last_detail = None
+        tried = 0
         for inst in self._ordered():
+            tried += 1
             body = await self.http.get(
                 f"{inst}{path}",
                 bucket="nitter",
@@ -57,6 +61,10 @@ class NitterSource:
                 return body
             self._punish(inst)
             log.debug("nitter ornegi basarisiz: %s", inst)
+        self.last_detail = (
+            f"{tried} nitter ornegi denendi, hicbiri yanit vermedi "
+            "(ucretsiz ornekler siklikla kapaniyor)"
+        )
         return None
 
     # ------------------------------------------------------------------ #
@@ -79,8 +87,11 @@ class NitterSource:
         body = await self._fetch_rss(f"/{quote(handle)}/rss")
         if not body:
             return
+        parsed = _parse_rss(body, self.name, force_handle=handle)
+        if not parsed:
+            self.last_detail = "nitter yanit verdi ama akis bos (hesap korumali/askida olabilir)"
         n = 0
-        for t in _parse_rss(body, self.name, force_handle=handle):
+        for t in parsed:
             if t.posted_at < since:
                 continue
             yield t

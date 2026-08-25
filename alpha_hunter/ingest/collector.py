@@ -8,7 +8,7 @@ from datetime import datetime
 from ..config import settings
 from ..http import HttpClient
 from .apify import ApifySource
-from .base import RawTweet, TweetSource
+from .base import RawTweet, SourceAttempt, TweetSource
 from .nitter import NitterSource
 from .twscrape_source import TwscrapeSource
 from .xapi import XApiSource
@@ -41,6 +41,8 @@ class Collector:
         self.sources = list(sources)
         self.fallback_chain = fallback_chain
         self._reported = False
+        # Her denemenin sonucu -- "neden bos dondu" sorusunun cevabi burada
+        self.attempts: list[SourceAttempt] = []
 
     async def collect_search(
         self, queries: Sequence[str], since: datetime, limit_per_query: int = 200
@@ -51,21 +53,29 @@ class Collector:
             got_any = False
             for src in self.sources:
                 if not await src.available():
+                    self.attempts.append(SourceAttempt(src.name, q[:40], skipped=True))
                     continue
                 try:
                     count = 0
                     async for t in src.search(q, since, limit_per_query):
                         seen.setdefault(t.tweet_id, t)
                         count += 1
+                    detail = getattr(src, "last_detail", None)
+                    self.attempts.append(SourceAttempt(src.name, q[:40], count=count, detail=detail))
                     if count:
                         got_any = True
                         log.info("[%s] '%s' -> %d tweet", src.name, q[:40], count)
                     else:
                         # Sessiz sifir, hatadan daha sinsi: kaynak calisti ama
                         # bos dondu. Gorunur olmali, yoksa teshis imkansiz.
-                        log.warning("[%s] '%s' -> 0 tweet", src.name, q[:40])
+                        log.warning(
+                            "[%s] '%s' -> 0 tweet%s", src.name, q[:40],
+                            f" ({detail})" if detail else "",
+                        )
                 except Exception as exc:
-                    log.warning("[%s] '%s' hata: %s: %s", src.name, q[:40], type(exc).__name__, exc)
+                    err = f"{type(exc).__name__}: {exc}"
+                    self.attempts.append(SourceAttempt(src.name, q[:40], error=err))
+                    log.warning("[%s] '%s' hata: %s", src.name, q[:40], err)
                 if got_any and self.fallback_chain:
                     break
             if not got_any:
@@ -95,18 +105,29 @@ class Collector:
         self, handles: Sequence[str], since: datetime, limit_per_handle: int = 100
     ) -> list[RawTweet]:
         seen: dict[str, RawTweet] = {}
+        await self._report_sources()
         for h in handles:
             for src in self.sources:
                 if not await src.available():
+                    self.attempts.append(SourceAttempt(src.name, h, skipped=True))
+                    log.info("[%s] @%s -> kaynak kapali, atlandi", src.name, h)
                     continue
                 try:
                     count = 0
                     async for t in src.user_timeline(h, since, limit_per_handle):
                         seen.setdefault(t.tweet_id, t)
                         count += 1
+                    detail = getattr(src, "last_detail", None)
+                    self.attempts.append(SourceAttempt(src.name, h, count=count, detail=detail))
                     if count:
                         log.info("[%s] @%s -> %d tweet", src.name, h, count)
                         break
+                    log.warning(
+                        "[%s] @%s -> 0 tweet%s", src.name, h,
+                        f" ({detail})" if detail else "",
+                    )
                 except Exception as exc:
-                    log.warning("[%s] @%s hata: %s", src.name, h, exc)
+                    err = f"{type(exc).__name__}: {exc}"
+                    self.attempts.append(SourceAttempt(src.name, h, error=err))
+                    log.warning("[%s] @%s hata: %s", src.name, h, err)
         return list(seen.values())

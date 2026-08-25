@@ -54,7 +54,9 @@
     position:sticky;top:0;background:var(--panel)}
   th.num,td.num{text-align:right}
   td{padding:9px 10px;border-bottom:1px solid #1a1e2a;white-space:nowrap}
-  td.wrap{white-space:normal;min-width:260px;max-width:430px;line-height:1.45;padding-top:11px;padding-bottom:11px}
+  td.wrap{white-space:normal;min-width:260px;max-width:470px;line-height:1.45;padding-top:11px;padding-bottom:11px}
+  .att{margin-top:6px;font-size:11.5px;color:var(--dim2);font-family:ui-monospace,Menlo,monospace;
+    line-height:1.6;border-left:2px solid var(--line);padding-left:8px}
   tbody tr:hover{background:var(--panel2)}
   tbody tr:last-child td{border-bottom:none}
 
@@ -451,8 +453,11 @@ async function loadJobs(){
         let sonuc = '<span class="dim">—</span>';
         if(j.status==='running') sonuc = `<span class="dim">${esc(j.progress||'')}</span>`;
         else if(j.status==='failed') sonuc = `<span class="down">${esc((j.error||'').slice(0,60))}</span>`;
-        else if(j.status==='done' && !r.found)
-          sonuc = `<span class="dim">${esc(r.reason||'sonuç yok')}</span>`;
+        else if(j.status==='done' && !r.found){
+          const att = (r.stats && r.stats.source_attempts) || [];
+          sonuc = `<span class="dim">${esc(r.reason||'sonuç yok')}</span>`
+            + (att.length ? `<div class="att">${att.map(a=>esc(a)).join('<br>')}</div>` : '');
+        }
         else if(j.status==='done') sonuc = `<span class="tier ${r.tier}">${r.tier}</span> ${r.n_calls} çağrı`;
         return `<tr>
           <td class="num dim">${j.id}</td>

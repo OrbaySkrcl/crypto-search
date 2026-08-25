@@ -44,6 +44,7 @@ async def run_ingest(
         # Teshis: "CA bulunamadi" ile "CA bulundu ama zincirin disinda" ayri seylerdir
         "tweets_with_ca": 0, "ca_candidates": 0,
         "skipped_wrong_chain": 0, "chains_seen": {},
+        "source_attempts": [],
     }
 
     async with HttpClient() as http:
@@ -53,6 +54,7 @@ async def run_ingest(
             raws += await collector.collect_timelines(handles, since, 100)
 
         # Tekillestir
+        stats["source_attempts"] = [a.summary() for a in collector.attempts]
         uniq = {r.tweet_id: r for r in raws}
         raws = list(uniq.values())
         stats["tweets_seen"] = len(raws)

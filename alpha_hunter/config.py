@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     )
     apify_token: str | None = None
     apify_actor: str = "apidojo/tweet-scraper"
+    # Apify sonuc basina ucretlendirir. Zamanlanmis dongu her 10 dakikada bir
+    # calistigi icin fatura sessizce buyuyebilir; gunluk tavan koyuyoruz.
+    # 0 = sinirsiz.
+    apify_daily_tweet_budget: int = 4000
     x_bearer_token: str | None = None
     twscrape_db: str = "twscrape_accounts.db"
 

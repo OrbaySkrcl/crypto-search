@@ -161,7 +161,7 @@ def list_jobs(session: Session, limit: int = 20) -> list[dict]:
 def _slim_stats(stats: dict) -> dict:
     keep = (
         "tweets_seen", "tweets_with_ca", "ca_candidates",
-        "calls_new", "skipped_wrong_chain", "chains_seen",
+        "calls_new", "skipped_wrong_chain", "chains_seen", "source_attempts",
     )
     return {k: stats.get(k) for k in keep if k in stats}
 
@@ -188,9 +188,13 @@ def diagnose_empty_result(stats: dict) -> str:
             f"CHAINS degiskenine {names} ekleyip tekrar dene."
         )
     if seen == 0:
+        # Kaynaklarin kendi acikladigi sebepleri aynen aktar -- tahmin yurutmeyelim
+        attempts = stats.get("source_attempts") or []
+        if attempts:
+            return "Hic tweet cekilemedi. Kaynaklar ne dedi: " + " | ".join(attempts[:4])
         return (
-            "Bu hesaptan hic tweet cekilemedi. Tweet kaynagi calismiyor olabilir "
-            "(APIFY_TOKEN gecerli mi?) ya da hesap adi yanlis/korumali olabilir."
+            "Bu hesaptan hic tweet cekilemedi ve hicbir kaynak denenmedi. "
+            "TWEET_SOURCES bos ya da gecersiz olabilir."
         )
     if with_ca == 0:
         return f"{seen} tweet tarandi, hicbirinde kontrat adresi yok."
