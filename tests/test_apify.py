@@ -150,7 +150,7 @@ async def test_empty_dataset_is_explained(db):
     got = [t async for t in src.user_timeline("testuser", SINCE, 10)]
 
     assert got == []
-    assert "0 kayit" in (src.last_detail or "")
+    assert "hicbir girdi bicimi" in (src.last_detail or "")
 
 
 async def test_failed_run_status_is_reported(db):
@@ -160,28 +160,100 @@ async def test_failed_run_status_is_reported(db):
     assert "FAILED" in (src.last_detail or "")
 
 
-async def test_timeline_falls_back_to_from_search(db):
-    """Ilk girdi bicimi bos donerse 'from:handle' aramasi denenmeli."""
-    class TwoStep(FakeApifyHttp):
-        def __init__(self):
-            super().__init__()
-            self._n = 0
+async def test_failed_status_does_not_read_the_dataset(db):
+    http = FakeApifyHttp(statuses=["FAILED"], items=[_tweet_item(0)])
+    src = ApifySource(http)
+    got = [t async for t in src.user_timeline("testuser", SINCE, 10)]
+    assert got == []
 
-        async def post(self, url, **kw):
-            if "/runs" in url:
-                self._n += 1
-                self._items = [] if self._n == 1 else [_tweet_item(0)]
-            return await super().post(url, **kw)
 
-    http = TwoStep()
+# ------------------------------------------------- girdi bicimi kesfi
+class ShapePicky(FakeApifyHttp):
+    """Yalnizca BELIRLI bir girdi alanini kabul eden aktoru taklit eder.
+
+    Gercek dunyada olan bu: yanlis sema sessizce [{"noResults": true}] doner.
+    """
+
+    def __init__(self, kabul_edilen_alan: str):
+        super().__init__()
+        self.kabul = kabul_edilen_alan
+        self.denenen_alanlar: list[list[str]] = []
+
+    async def post(self, url, **kw):
+        if "/runs" in url:
+            body = kw.get("json_body") or {}
+            self.denenen_alanlar.append(sorted(body.keys()))
+            self._items = ([_tweet_item(0)] if self.kabul in body
+                           else [{"noResults": True}])
+        return await super().post(url, **kw)
+
+
+async def test_no_results_marker_is_treated_as_empty(db):
+    """REGRESYON: [{'noResults': true}] bir kayit degil, 'sonuc yok' demek."""
+    http = FakeApifyHttp(items=[{"noResults": True}])
     src = ApifySource(http)
     got = [t async for t in src.user_timeline("testuser", SINCE, 10)]
 
-    starts = [c for c in http.calls if c["m"] == "POST" and c["url"].endswith("/runs")]
-    assert len(starts) == 2
-    assert "twitterHandles" in starts[0]["body"]
-    assert starts[1]["body"]["searchTerms"] == ["from:testuser"]
+    assert got == []
+    assert "hicbir girdi bicimi" in (src.last_detail or "")
+
+
+async def test_discovers_the_working_input_shape(db):
+    """Aktor yalnizca startUrls kabul ediyorsa sistem onu bulmali."""
+    http = ShapePicky("startUrls")
+    src = ApifySource(http)
+    got = [t async for t in src.user_timeline("testuser", SINCE, 10)]
+
     assert len(got) == 1
+    assert any("startUrls" in alanlar for alanlar in http.denenen_alanlar)
+
+
+async def test_remembers_the_shape_and_tries_it_first(db):
+    """Ogrenilen bicim bir daha aranmasin -- her deneme para demek."""
+    from alpha_hunter.ingest.apify import _remembered_shape
+
+    src1 = ApifySource(ShapePicky("searchQueries"))
+    [t async for t in src1.user_timeline("testuser", SINCE, 10)]
+    assert _remembered_shape() == "searchQueries"
+
+    http2 = ShapePicky("searchQueries")
+    src2 = ApifySource(http2)
+    got = [t async for t in src2.user_timeline("testuser", SINCE, 10)]
+    assert len(got) == 1
+    # ilk denemede dogru bicimi kullanmis olmali
+    assert "searchQueries" in http2.denenen_alanlar[0]
+    assert len(http2.denenen_alanlar) == 1
+
+
+async def test_stops_probing_when_the_actor_itself_is_broken(db):
+    """Aktor baslatilamiyorsa sekiz bicimi denemek bosuna para harcamak."""
+    http = FakeApifyHttp(start_fails=True)
+    src = ApifySource(http)
+    [t async for t in src.user_timeline("testuser", SINCE, 10)]
+
+    starts = [c for c in http.calls if c["m"] == "POST" and c["url"].endswith("/runs")]
+    assert len(starts) == 1
+
+
+async def test_probe_reports_every_shape_until_one_works(db):
+    http = ShapePicky("twitterHandles")
+    out = await ApifySource(http).probe("testuser")
+
+    assert any(r["kayit"] > 0 for r in out)
+    calisan = next(r for r in out if r["kayit"])
+    assert calisan["bicim"] == "twitterHandles"
+    assert calisan["cozulen"] == 1
+
+
+async def test_diagnose_suggests_another_actor_when_nothing_works(db):
+    """Hicbir bicim tutmuyorsa kullaniciya somut bir sonraki adim verilmeli."""
+    http = FakeApifyHttp(items=[{"noResults": True}])
+    out = await ApifySource(http).diagnose("testuser")
+
+    assert out["kayit_sayisi"] == 0
+    assert "hicbir girdi bicimi" in out["sonuc"]
+    assert "APIFY_ACTOR" in out["oneri"]
+    assert len(out["bicim_denemeleri"]) >= 4
 
 
 # ------------------------------------------------------------------ butce
@@ -223,14 +295,14 @@ async def test_diagnose_reports_a_working_setup(db):
     assert out["kayit_sayisi"] == 2
     assert out["cozumlenebildi"] is True
     assert out["sonuc"] == "calisiyor"
-    assert "ornek_alanlar" in out
+    assert out["calisan_bicim"]
 
 
 async def test_diagnose_reports_a_broken_actor(db):
     out = await ApifySource(FakeApifyHttp(start_fails=True)).diagnose("testuser")
     assert out["token_gecerli"] is True
     assert out["kayit_sayisi"] == 0
-    assert "aktor baslatilamadi" in (out["aciklama"] or "")
+    assert "APIFY_ACTOR" in out["oneri"]
 
 
 async def test_diagnose_without_token(db, monkeypatch):
@@ -285,12 +357,10 @@ def test_handle_recovered_from_url_when_author_missing():
 
 
 async def test_diagnose_explains_unparseable_records(db):
-    """Kayit geliyor ama okunamiyorsa: neden okunamadigi + alan adlari."""
+    """Kayit geliyor ama okunamiyorsa acikca soylenmeli."""
     bozuk = [{"tweetText": "merhaba", "postedOn": "dun", "writer": "godofgem"}]
     out = await ApifySource(FakeApifyHttp(items=bozuk)).diagnose("godofgem")
 
     assert out["kayit_sayisi"] == 1
     assert out["cozumlenebildi"] is False
-    assert out["cozumleme_hatasi"]
-    assert "tweetText" in out["ornek_alanlar"]
-    assert "ham_ornek" in out
+    assert "cozumlenemiyor" in out["sonuc"]

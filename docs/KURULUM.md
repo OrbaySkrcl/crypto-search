@@ -341,6 +341,7 @@ katı orada görünür.
 | **Loglarda `sqlite3.OperationalError`** | PostgreSQL bağlı değil, bot konteyner içindeki dosyaya yazıyor | Railway'de veritabanı eklentisi var mı bak. Yoksa **+ Create → Database → Add PostgreSQL**. **Veri her deploy'da siliniyor demektir — acil.** |
 | **Loglarda sürekli `hicbir ornek yanit vermedi`** | Nitter örnekleri ölü, veri gelmiyor | `APIFY_TOKEN` gir ve `TWEET_SOURCES=apify,nitter` yap. Nitter tek başına çalışmıyor. |
 | **Tarama "X kontrat bulundu ama … zincirinde" diyor** | Hesap senin takip etmediğin bir zincirde CA paylaşıyor | `CHAINS` değişkenine o zinciri ekle (örn. `solana,ethereum,base`) ve tekrar tarat. |
+| **Bağlantı testi "hiçbir giriş biçimi sonuç vermedi" diyor** | Aktör çalışıyor ama beklediği alan adları farklı | `APIFY_ACTOR` değişkenini başka bir aktörle değiştir: `apidojo/twitter-scraper-lite` veya `kaitoeasyapi/twitter-x-data-tweet-scraper` |
 | **Apify çalışıyor mu bilmiyorum** | Panoda **Hesap tara → Bağlantı testi** düğmesi tek gerçek çağrı yapar | Token geçerli mi, aktör çalışıyor mu, kaç kayıt dönüyor — hepsini tek ekranda gösterir |
 | **Tarama "Hiç tweet çekilemedi" diyor** | Sonuç satırının altında her kaynağın ne dediği yazar | `apify: kapali` → token yok veya günlük bütçe dolmuş · `apify: 0 tweet` → aktör adı/kredi sorunu · `nitter: 0 tweet` → ücretsiz örnekler kapalı (normal) |
 | Panoda hep 0 çağrı | Tweet kaynağı çalışmıyor | Railway loglarında `hicbir kaynak ... veri dondurmedi` ara. `APIFY_TOKEN` doğru mu? |

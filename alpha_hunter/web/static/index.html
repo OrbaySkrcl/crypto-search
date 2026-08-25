@@ -429,12 +429,13 @@ async function viewScan(){
         satir('sonuç', d.sonuc || '—'),
         d.aciklama ? satir('açıklama', d.aciklama) : null,
         d.ornek_tweet ? '\nörnek tweet: @' + d.ornek_tweet.hesap + ' — ' + d.ornek_tweet.metin : null,
-        d.cozumleme_hatasi ? satir('neden okunamadı', d.cozumleme_hatasi) : null,
-        d.ornek_alanlar ? '\naktörün döndürdüğü alanlar:\n  ' + d.ornek_alanlar.join(', ') : null,
-        (d.yazar_alanlari && d.yazar_alanlari.length)
-          ? 'yazar alanları:\n  ' + d.yazar_alanlari.join(', ') : null,
-        d.ham_ornek ? '\nham kayıt:\n' + Object.entries(d.ham_ornek)
-          .map(([k,v]) => '  ' + k + ' = ' + v).join('\n') : null,
+        d.calisan_bicim ? satir('çalışan giriş biçimi', d.calisan_bicim) : null,
+        d.hatirlanan_bicim ? satir('hatırlanan biçim', d.hatirlanan_bicim) : null,
+        d.bicim_denemeleri ? '\ndenenen giriş biçimleri:\n' + d.bicim_denemeleri
+          .map(r => `  ${(r.bicim+'').padEnd(20)} kayıt ${r.kayit}` +
+                    (r.cozulen!=null?` · çözülen ${r.cozulen}`:'') +
+                    (r.not?`  (${r.not})`:'')).join('\n') : null,
+        d.oneri ? '\nöneri:\n  ' + d.oneri : null,
       ].filter(Boolean);
       $('#jMsg').innerHTML = `<div class="diag">${esc(lines.join('\n'))}</div>`;
     }catch(e){

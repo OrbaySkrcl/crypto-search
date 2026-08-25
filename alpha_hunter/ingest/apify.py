@@ -9,7 +9,7 @@ import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..config import settings
@@ -18,7 +18,6 @@ from .base import RawTweet
 
 log = logging.getLogger(__name__)
 _BASE = "https://api.apify.com/v2"
-
 
 def _budget_key() -> str:
     return f"apify_usage_{datetime.now(timezone.utc):%Y-%m-%d}"
@@ -68,6 +67,92 @@ def _consume_budget(n: int) -> None:
         log.debug("apify butce sayaci guncellenemedi", exc_info=True)
 
 
+
+# --------------------------------------------------------------------------- #
+#  Girdi bicimleri
+#
+#  Apify'de her Twitter aktoru farkli bir girdi semasi kullaniyor ve yanlis
+#  sema sessizce [{"noResults": true}] donduruyor. Semayi tahmin etmek yerine
+#  sistem DENEYEREK buluyor ve calisan bicimi hatirliyor.
+# --------------------------------------------------------------------------- #
+_SHAPE_KEY = "apify_input_shape"
+
+
+def _d(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%d")
+
+
+INPUT_SHAPES: list[tuple[str, Any]] = [
+    ("searchTerms_from", lambda kind, target, since, n: {
+        "searchTerms": [f"from:{target}" if kind == "user" else target],
+        "maxItems": n, "sort": "Latest",
+    }),
+    ("twitterHandles", lambda kind, target, since, n: {
+        "twitterHandles": [target], "maxItems": n, "sort": "Latest",
+    } if kind == "user" else None),
+    ("searchTerms_dated", lambda kind, target, since, n: {
+        "searchTerms": [f"from:{target}" if kind == "user" else target],
+        "maxItems": n, "sort": "Latest",
+        "start": _d(since), "end": _d(datetime.now(timezone.utc)),
+    }),
+    ("startUrls_obj", lambda kind, target, since, n: {
+        "startUrls": [{"url": f"https://x.com/{target}"}], "maxItems": n,
+    } if kind == "user" else None),
+    ("startUrls_plain", lambda kind, target, since, n: {
+        "startUrls": [f"https://x.com/{target}"], "maxItems": n,
+    } if kind == "user" else None),
+    ("queryType", lambda kind, target, since, n: {
+        "searchTerms": [f"from:{target}" if kind == "user" else target],
+        "maxItems": n, "queryType": "Latest",
+    }),
+    ("searchQueries", lambda kind, target, since, n: {
+        "searchQueries": [f"from:{target}" if kind == "user" else target],
+        "maxTweets": n,
+    }),
+    ("handles_legacy", lambda kind, target, since, n: {
+        "handles": [target], "tweetsDesired": n, "mode": "own",
+    } if kind == "user" else None),
+]
+
+
+def _remembered_shape() -> str | None:
+    from ..db.models import AppState
+    from ..db.session import session_scope
+
+    try:
+        with session_scope() as s:
+            row = s.get(AppState, _SHAPE_KEY)
+            return row.value if row else None
+    except Exception:
+        return None
+
+
+def _remember_shape(name: str) -> None:
+    from ..db.models import AppState, utcnow
+    from ..db.session import session_scope
+
+    try:
+        with session_scope() as s:
+            row = s.get(AppState, _SHAPE_KEY)
+            if row is None:
+                s.add(AppState(key=_SHAPE_KEY, value=name))
+                log.info("apify girdi bicimi ogrenildi: %s", name)
+            elif row.value != name:
+                log.info("apify girdi bicimi degisti: %s -> %s", row.value, name)
+                row.value = name
+                row.updated_at = utcnow()
+    except Exception:
+        log.debug("apify bicimi kaydedilemedi", exc_info=True)
+
+
+def _is_empty_marker(items: list) -> bool:
+    """apidojo bos aramayi [{"noResults": true}] olarak bildiriyor."""
+    return bool(items) and all(
+        isinstance(i, dict) and (i.get("noResults") or i.get("no_results"))
+        for i in items
+    )
+
+
 class ApifySource:
     name = "apify"
 
@@ -89,15 +174,15 @@ class ApifySource:
             return False
         return True
 
+    # ------------------------------------------------------------------ #
     async def _run(self, payload: dict, limit: int) -> list[dict]:
         """Aktoru ASENKRON calistirir: baslat -> bitmesini bekle -> sonucu al.
 
-        Neden senkron uc (run-sync-get-dataset-items) kullanilmiyor:
-        o uc, aktor isini bitirene kadar HTTP baglantisini acik tutar. Bir
-        Twitter taramasi dakikalar surebilir; istemci zaman asimina ugrayinca
-        Apify tarafinda is CALISMAYA DEVAM EDER ve UCRETLENDIRILIR, ama bize
-        hicbir sonuc donmez. Yeniden deneme bunu ucla carpar. Bu desende ise
-        baglanti kisa tutuluyor, is durumu yoklanarak bekleniyor.
+        Neden senkron uc (run-sync-get-dataset-items) kullanilmiyor: o uc,
+        aktor isini bitirene kadar HTTP baglantisini acik tutar. Bir Twitter
+        taramasi dakikalar surebilir; istemci zaman asimina ugrayinca Apify
+        tarafinda is CALISMAYA DEVAM EDER ve UCRETLENDIRILIR, ama bize hicbir
+        sonuc donmez. Yeniden deneme bunu ucla carpar.
         """
         self.last_detail = None
         if not self.token:
@@ -107,12 +192,9 @@ class ApifySource:
         auth = {"Authorization": f"Bearer {self.token}"}
         timeout = settings.apify_request_timeout
 
-        # --- 1) isi baslat ------------------------------------------------ #
         started = await self.http.post(
             f"{_BASE}/acts/{self.actor}/runs",
-            bucket="apify",
-            json_body=payload,
-            headers=auth,
+            bucket="apify", json_body=payload, headers=auth,
             max_retries=0,          # ucretli is: asla korlemesine tekrarlama
             timeout=timeout,
         )
@@ -121,17 +203,12 @@ class ApifySource:
             self.last_detail = (
                 f"aktor baslatilamadi ({self.actor}): "
                 f"{err.get('type', 'yanit yok')} {str(err.get('message', ''))[:160]}".strip()
-                or f"aktor baslatilamadi ({self.actor}) — token gecerli mi, aktor kiralandi mi?"
             )
             log.error("apify: %s", self.last_detail)
             return []
 
         run = started["data"]
-        run_id = run.get("id")
-        dataset_id = run.get("defaultDatasetId")
-        log.info("apify isi basladi: %s (aktor %s)", run_id, self.actor)
-
-        # --- 2) bitmesini bekle ------------------------------------------- #
+        run_id, dataset_id = run.get("id"), run.get("defaultDatasetId")
         deadline = time.monotonic() + settings.apify_max_wait_seconds
         status = run.get("status", "READY")
         while status in ("READY", "RUNNING"):
@@ -144,118 +221,57 @@ class ApifySource:
                 return []
             await asyncio.sleep(5)
             info = await self.http.get(
-                f"{_BASE}/actor-runs/{run_id}",
-                bucket="apify",
-                headers=auth,
-                max_retries=1,
-                timeout=timeout,
+                f"{_BASE}/actor-runs/{run_id}", bucket="apify", headers=auth,
+                max_retries=1, timeout=timeout,
             )
             status = ((info or {}).get("data") or {}).get("status") or status
 
         if status != "SUCCEEDED":
             self.last_detail = f"aktor {status} durumuyla bitti"
             log.warning("apify isi %s: %s", run_id, status)
-            if status not in ("FAILED", "ABORTED", "TIMED-OUT"):
-                return []
+            return []
 
-        # --- 3) sonuclari al ---------------------------------------------- #
         items = await self.http.get(
             f"{_BASE}/datasets/{dataset_id}/items",
             bucket="apify",
             params={"limit": str(limit), "clean": "true", "format": "json"},
-            headers=auth,
-            max_retries=1,
-            timeout=timeout,
+            headers=auth, max_retries=1, timeout=timeout,
         )
         if not isinstance(items, list):
             self.last_detail = "sonuc kumesi okunamadi"
-            log.error("apify veri kumesi okunamadi: %s", dataset_id)
             return []
-        if not items:
-            self.last_detail = (
-                f"aktor calisti ({status}) ama 0 kayit dondurdu — kredi bitmis, "
-                "hesap korumali/askida ya da tarih araligi bos olabilir"
-            )
-            log.warning("apify: %s", self.last_detail)
-        else:
-            log.info("apify %d kayit dondurdu", len(items))
+        if _is_empty_marker(items):
+            # Aktor "bu arama hicbir sey bulmadi" diyor -- bos liste gibi davran
+            self.last_detail = "aktor 'noResults' dondurdu (arama sonuc bulamadi)"
+            return []
         return items[:limit]
 
-    async def diagnose(self, handle: str = "elonmusk") -> dict:
-        """Tek bir gercek cagri yapip ham sonucu dondurur.
-
-        Panodaki 'Baglanti testi' dugmesi bunu cagirir: tahmin yurutmek yerine
-        Apify'in ne dedigini oldugu gibi gosterir.
-        """
-        out: dict = {
-            "token_var": bool(self.token),
-            "token_onek": (self.token or "")[:12] + "..." if self.token else None,
-            "aktor": self.actor.replace("~", "/"),
-            "gunluk_kullanim": budget_used(),
-            "gunluk_butce": settings.apify_daily_tweet_budget,
-            "butce_doldu": budget_exhausted(),
-        }
-        if not self.token:
-            out["sonuc"] = "APIFY_TOKEN tanimli degil"
-            return out
-
-        me = await self.http.get(
-            f"{_BASE}/users/me",
-            bucket="apify",
-            headers={"Authorization": f"Bearer {self.token}"},
-            max_retries=0,
-            timeout=30.0,
+    async def _run_shapes(
+        self, kind: str, target: str, since: datetime, limit: int
+    ) -> tuple[list[dict], str | None]:
+        """Calisan girdi bicimini bulana kadar sirayla dener ve ogrenir."""
+        remembered = _remembered_shape()
+        order = sorted(
+            INPUT_SHAPES, key=lambda sh: 0 if sh[0] == remembered else 1
         )
-        if isinstance(me, dict) and me.get("data"):
-            out["hesap"] = me["data"].get("username") or "?"
-            out["token_gecerli"] = True
-        else:
-            out["token_gecerli"] = False
-            out["sonuc"] = "Token gecersiz ya da Apify'a ulasilamiyor"
-            return out
+        notes: list[str] = []
+        for name, build in order:
+            payload = build(kind, target, since, limit)
+            if payload is None:
+                continue
+            items = await self._run(payload, limit)
+            if items:
+                _remember_shape(name)
+                return (items, name)
+            notes.append(f"{name}: {self.last_detail or 'bos'}")
+            if self.last_detail and "baslatilamadi" in self.last_detail:
+                break            # aktor/token sorunu -- digerlerini denemek bosuna
+        self.last_detail = "hicbir girdi bicimi sonuc vermedi — " + "; ".join(notes[:4])
+        return ([], None)
 
-        payload = {
-            "searchTerms": [f"from:{handle}"],
-            "maxItems": 5,
-            "sort": "Latest",
-        }
-        out["gonderilen_girdi"] = payload
-        items = await self._run(payload, 5)
-        out["kayit_sayisi"] = len(items)
-        out["aciklama"] = self.last_detail
-        if items:
-            first = items[0] if isinstance(items[0], dict) else {}
-            out["ornek_alanlar"] = sorted(first.keys())[:30]
-            author = _author_of(first)
-            out["yazar_alanlari"] = sorted(author.keys())[:20] if author else []
-            t = _normalise(items[0])
-            out["cozumlenebildi"] = t is not None
-            if t:
-                out["ornek_tweet"] = {
-                    "hesap": t.handle, "tarih": t.posted_at.isoformat(),
-                    "metin": t.text[:120],
-                }
-            else:
-                # Neden okuyamadigimizi ve ham kaydin bir parcasini goster --
-                # bir sonraki turda tahmin yurutmeye gerek kalmasin.
-                out["cozumleme_hatasi"] = _why_normalise_failed(first)
-                out["ham_ornek"] = {
-                    k: (str(v)[:90] if not isinstance(v, (dict, list)) else
-                        f"<{type(v).__name__}: {sorted(v.keys())[:8] if isinstance(v, dict) else len(v)}>")
-                    for k, v in list(first.items())[:18]
-                }
-        out["sonuc"] = "calisiyor" if items else "aktor sonuc dondurmedi"
-        return out
-
+    # ------------------------------------------------------------------ #
     async def search(self, query: str, since: datetime, limit: int = 200) -> AsyncIterator[RawTweet]:
-        payload = {
-            "searchTerms": [query],
-            "maxItems": limit,
-            "sort": "Latest",
-            "start": since.strftime("%Y-%m-%d_%H:%M:%S_UTC"),
-            "includeSearchTerms": False,
-        }
-        items = await self._run(payload, limit)
+        items, _shape = await self._run_shapes("search", query, since, limit)
         got = 0
         for item in items:
             t = _normalise(item)
@@ -265,53 +281,99 @@ class ApifySource:
         _consume_budget(got)
 
     async def user_timeline(self, handle: str, since: datetime, limit: int = 100) -> AsyncIterator[RawTweet]:
-        """Once twitterHandles, olmazsa 'from:' aramasi.
+        items, _shape = await self._run_shapes("user", handle, since, limit)
+        got = 0
+        for item in items:
+            t = _normalise(item)
+            if t and t.posted_at >= since:
+                got += 1
+                yield t
+        _consume_budget(got)
+        if items and not got:
+            self.last_detail = (
+                f"{len(items)} kayit geldi ama hicbiri son "
+                f"{(datetime.now(timezone.utc) - since).days} gun icinde degil "
+                "ya da bicimi cozulemedi"
+            )
 
-        Aktorden aktore girdi semasi degisiyor: bazilari `twitterHandles`
-        anlamiyor, hepsi `searchTerms` anliyor. Tek bicime guvenmek, hesabin
-        gercekten tweet atmis olmasina ragmen bos donmesine yol aciyordu.
+    # ------------------------------------------------------------------ #
+    async def probe(self, handle: str = "elonmusk", per_shape: int = 10) -> list[dict]:
+        """Butun girdi bicimlerini deneyip hangisinin veri dondurdugunu raporlar.
+
+        Aktorun semasini tahmin etmek yerine olcuyoruz. Calisan bicim
+        hatirlaniyor, bir daha aranmiyor.
         """
-        attempts = [
-            ("twitterHandles", {
-                "twitterHandles": [handle],
-                "maxItems": limit,
-                "sort": "Latest",
-                "start": since.strftime("%Y-%m-%d"),
-            }),
-            ("searchTerms from:", {
-                "searchTerms": [f"from:{handle}"],
-                "maxItems": limit,
-                "sort": "Latest",
-                "start": since.strftime("%Y-%m-%d"),
-            }),
-        ]
-        for label, payload in attempts:
-            items = await self._run(payload, limit)
-            if not items:
-                log.info("apify @%s: '%s' bicimi bos dondu", handle, label)
+        since = datetime.now(timezone.utc) - timedelta(days=30)
+        out: list[dict] = []
+        winner: str | None = None
+        for name, build in INPUT_SHAPES:
+            payload = build("user", handle, since, per_shape)
+            if payload is None:
                 continue
-            yielded = 0
-            for item in items:
-                t = _normalise(item)
-                if t and t.posted_at >= since:
-                    yielded += 1
-                    yield t
-            if yielded:
-                self.last_detail = None
-                _consume_budget(yielded)
-                return
-            self.last_detail = (
-                f"{len(items)} kayit geldi ama hicbiri son {(datetime.now(timezone.utc) - since).days} "
-                "gun icinde degil ya da bicimi taninmadi"
+            items = await self._run(payload, per_shape)
+            parsed = sum(1 for i in items if _normalise(i))
+            out.append({
+                "bicim": name,
+                "kayit": len(items),
+                "cozulen": parsed,
+                "not": None if items else (self.last_detail or "bos"),
+                "gonderilen": sorted(payload.keys()),
+            })
+            if items and winner is None:
+                winner = name
+                _remember_shape(name)
+                break              # calisan bulundu, gerisini deneyip para harcama
+        return out
+
+    async def diagnose(self, handle: str = "elonmusk") -> dict:
+        out: dict = {
+            "token_var": bool(self.token),
+            "token_onek": (self.token or "")[:12] + "..." if self.token else None,
+            "aktor": self.actor.replace("~", "/"),
+            "gunluk_kullanim": budget_used(),
+            "gunluk_butce": settings.apify_daily_tweet_budget,
+            "butce_doldu": budget_exhausted(),
+            "hatirlanan_bicim": _remembered_shape(),
+        }
+        if not self.token:
+            out["sonuc"] = "APIFY_TOKEN tanimli degil"
+            return out
+
+        me = await self.http.get(
+            f"{_BASE}/users/me", bucket="apify",
+            headers={"Authorization": f"Bearer {self.token}"},
+            max_retries=0, timeout=30.0,
+        )
+        if isinstance(me, dict) and me.get("data"):
+            out["hesap"] = me["data"].get("username") or "?"
+            out["token_gecerli"] = True
+        else:
+            out["token_gecerli"] = False
+            out["sonuc"] = "Token gecersiz ya da Apify'a ulasilamiyor"
+            return out
+
+        results = await self.probe(handle)
+        out["bicim_denemeleri"] = results
+        calisan = next((r for r in results if r["kayit"]), None)
+
+        if calisan is None:
+            out["kayit_sayisi"] = 0
+            out["sonuc"] = "hicbir girdi bicimi sonuc vermedi"
+            out["oneri"] = (
+                f"'{self.actor.replace('~', '/')}' aktoru bu girdi bicimlerinin hicbirini "
+                "kabul etmiyor. APIFY_ACTOR degiskenini baska bir aktorle degistir "
+                "(ornek: apidojo/twitter-scraper-lite veya kaitoeasyapi/twitter-x-data-tweet-scraper). "
+                "Aktorun Apify sayfasindaki 'Input' sekmesinde beklenen alan adlari yazar."
             )
-        if not self.last_detail:
-            self.last_detail = (
-                "her iki girdi bicimi de bos dondu — aktor adi yanlis, kredi bitmis "
-                "ya da hesap korumali/askida olabilir"
-            )
+            return out
+
+        out["calisan_bicim"] = calisan["bicim"]
+        out["kayit_sayisi"] = calisan["kayit"]
+        out["cozumlenebildi"] = calisan["cozulen"] > 0
+        out["sonuc"] = "calisiyor" if calisan["cozulen"] else "kayit geliyor ama cozumlenemiyor"
+        return out
 
 
-# --------------------------------------------------------------------------- #
 def _pick(d: dict, *keys: str, default: Any = None) -> Any:
     for k in keys:
         if k in d and d[k] not in (None, ""):
