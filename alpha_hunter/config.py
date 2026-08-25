@@ -105,6 +105,13 @@ class Settings(BaseSettings):
     alert_max_entry_mc_usd: float = 3_000_000.0
     alerts_enabled: bool = True
 
+    # ------------------------------------------------------------ web panosu
+    web_enabled: bool = True
+    web_port: int = 8000
+    web_user: str = "admin"
+    # Bos birakilirsa pano sifresiz acilir. Railway'de mutlaka doldur.
+    web_password: str | None = None
+
     # ------------------------------------------------------------- scheduler
     ingest_interval_minutes: int = 10
     enrich_interval_minutes: int = 5
@@ -161,6 +168,9 @@ def get_settings() -> Settings:
             if os.getenv(alt):
                 os.environ["DATABASE_URL"] = os.environ[alt]
                 break
+    # Railway/Heroku web portunu PORT ile verir
+    if not os.getenv("WEB_PORT") and os.getenv("PORT"):
+        os.environ["WEB_PORT"] = os.environ["PORT"]
     return Settings()
 
 

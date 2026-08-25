@@ -150,6 +150,33 @@ kimlerin hangi sırayla paylaştığı.
 
 ---
 
+## Web panosu
+
+Terminal bilmene gerek yok — tarayıcıdan bak.
+
+```bash
+python -m alpha_hunter serve      # http://localhost:8000
+```
+
+`run` komutu (Railway'in kullandığı) işçiyle birlikte panoyu da açar, yani
+tek servis yeter. Üç görünüm var:
+
+- **Liderlik tablosu** — hesaplar alfa skoruna göre sıralı, her sütunun ne demek
+  olduğu sayfanın altında açıklanıyor. Hesaba tıklayınca tüm çağrı geçmişi açılır.
+- **Son çağrılar** — canlı akış. Süreye ve minimum alfa skoruna göre filtrelenir.
+- **İstatistik** — sistem durumu, çağrı sonuçları, tier dağılımı.
+
+Pano 60 saniyede bir kendini yeniler.
+
+> **Şifre koy.** `WEB_PASSWORD` boş bırakılırsa pano internete açık olur ve
+> bulduğun alfa hesapları herkesin eline geçer. Railway'de mutlaka doldur.
+
+JSON API'si de var (kendi araçlarını bağlamak istersen):
+`/api/leaderboard`, `/api/calls`, `/api/account/{handle}`, `/api/overview`.
+İnteraktif dokümantasyon: `/api/docs`
+
+---
+
 ## Railway'e kurulum
 
 1. Railway'de **New Project → Deploy from GitHub repo** → bu repoyu seç.
@@ -163,6 +190,7 @@ kimlerin hangi sırayla paylaştığı.
    APIFY_TOKEN=...              # nitter tek başına güvenilir değil
    TELEGRAM_BOT_TOKEN=...
    TELEGRAM_CHAT_ID=...
+   WEB_PASSWORD=...             # panoyu koru
    ```
 
 4. Deploy. `railway.json` başlangıç komutunu (`python -m alpha_hunter run`)
@@ -170,6 +198,7 @@ kimlerin hangi sırayla paylaştığı.
    ingest 10dk, enrich 5dk, skorlama 60dk, günlük liderlik tablosu.
 
 Log'larda `Alpha Hunter calisiyor | zincir=solana ...` satırını görüyorsan ayakta.
+Panoya erişmek için Railway'de **Settings → Networking → Generate Domain** de.
 
 ### Telegram kurulumu
 
@@ -199,7 +228,8 @@ python -m alpha_hunter alert --test
 | `token ADRES` | Tek bir CA'yi inceler (fiyat + güvenlik) |
 | `stats` | Veritabanı özeti |
 | `alert --test / --leaderboard` | Telegram testi / liderlik tablosu gönderir |
-| `run` | Sürekli çalışır (Railway worker modu) |
+| `serve` | Sadece web panosunu açar |
+| `run` | Sürekli çalışır: işçi + web panosu (Railway modu) |
 
 ---
 
@@ -217,6 +247,8 @@ Her şey environment değişkeni. En çok işe yarayanlar:
 | `ALERT_MIN_ALPHA_SCORE` | 65 | Hangi tier'dan itibaren alarm gelir |
 | `SEARCH_QUERIES` | — | Taranacak sorgular (`\|` ile ayrılır) |
 | `WATCHLIST_HANDLES` | — | Zaman çizelgesi taranacak hesaplar |
+| `WEB_PASSWORD` | — | Pano şifresi (boşsa koruma yok) |
+| `WEB_ENABLED` | true | Panoyu tamamen kapatmak için `false` |
 
 Skor ağırlıklarını değiştirmek istersen: `W_RELIABILITY`, `W_MAGNITUDE`,
 `W_ENTRY_QUALITY`, `W_SURVIVORSHIP`, `W_ORIGINALITY`.
@@ -259,7 +291,7 @@ Bu bir araştırma aracıdır, yatırım tavsiyesi değildir.
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q          # 57 test
+pytest -q          # 67 test
 ruff check .
 ```
 
@@ -268,3 +300,4 @@ Testler ağa çıkmaz — DexScreener ve GeckoTerminal yanıtları gerçek gövd
 (sniper / copycat / spammer) ve sıralamanın felsefeye uymasını doğrular.
 
 Detaylı matematik: [`docs/ALGORITHM.md`](docs/ALGORITHM.md)
+Adım adım kurulum (kodlama bilmeyenler için): [`docs/KURULUM.md`](docs/KURULUM.md)

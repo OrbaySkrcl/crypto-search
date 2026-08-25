@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alpha Hunter</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ctext y=%2726%27 font-size=%2726%27%3E%F0%9F%8E%AF%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0a0c11; --panel:#11141c; --panel2:#161a24; --line:#232838;
+    --tx:#e6e9f0; --dim:#8b93a7; --dim2:#5f6779;
+    --up:#31d18a; --down:#ff5c72; --warn:#ffb340; --acc:#5b8dff;
+    --s:#c77dff; --a:#31d18a; --b:#5b8dff; --c:#ffd166; --d:#ff9f45; --f:#ff5c72; --u:#5f6779;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  code,.mono,td.num,th.num{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-variant-numeric:tabular-nums}
+  a{color:var(--acc);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1400px;margin:0 auto;padding:20px 16px 60px}
+
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  h1{font-size:19px;margin:0;letter-spacing:.4px}
+  h1 span{color:var(--acc)}
+  .sub{color:var(--dim2);font-size:12px}
+  .refresh{margin-left:auto;color:var(--dim2);font-size:12px}
+
+  .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:18px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:11px 13px}
+  .stat .k{color:var(--dim2);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  .stat .v{font-size:20px;margin-top:3px;font-family:ui-monospace,Menlo,monospace}
+
+  nav{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+  nav button{background:var(--panel);color:var(--dim);border:1px solid var(--line);
+    padding:7px 14px;border-radius:7px;cursor:pointer;font-size:13px}
+  nav button:hover{color:var(--tx)}
+  nav button.on{background:var(--acc);border-color:var(--acc);color:#06080d;font-weight:600}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .card-head{padding:11px 14px;border-bottom:1px solid var(--line);display:flex;
+    align-items:center;gap:10px;flex-wrap:wrap}
+  .card-head h2{font-size:14px;margin:0;font-weight:600}
+  .card-head .hint{color:var(--dim2);font-size:12px}
+  .ctrl{margin-left:auto;display:flex;gap:6px;align-items:center}
+  select,input{background:var(--panel2);color:var(--tx);border:1px solid var(--line);
+    border-radius:6px;padding:5px 8px;font-size:12px}
+
+  .scroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--dim2);font-weight:500;font-size:11px;text-transform:uppercase;
+    letter-spacing:.5px;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;
+    position:sticky;top:0;background:var(--panel)}
+  th.num,td.num{text-align:right}
+  td{padding:9px 10px;border-bottom:1px solid #1a1e2a;white-space:nowrap}
+  tbody tr:hover{background:var(--panel2)}
+  tbody tr:last-child td{border-bottom:none}
+
+  .tier{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border-radius:5px;
+    font-size:11px;font-weight:700;font-family:ui-monospace,Menlo,monospace}
+  .tier.S{background:rgba(199,125,255,.16);color:var(--s)}
+  .tier.A{background:rgba(49,209,138,.16);color:var(--a)}
+  .tier.B{background:rgba(91,141,255,.16);color:var(--b)}
+  .tier.C{background:rgba(255,209,102,.15);color:var(--c)}
+  .tier.D{background:rgba(255,159,69,.15);color:var(--d)}
+  .tier.F{background:rgba(255,92,114,.14);color:var(--f)}
+  .tier.UNRATED{background:rgba(95,103,121,.16);color:var(--u)}
+
+  .oc{font-size:11px;padding:1px 7px;border-radius:5px;font-weight:600}
+  .oc.win{background:rgba(49,209,138,.16);color:var(--up)}
+  .oc.loss{background:rgba(255,92,114,.13);color:var(--down)}
+  .oc.rug{background:rgba(255,92,114,.22);color:var(--down)}
+  .oc.pending{background:rgba(255,179,64,.14);color:var(--warn)}
+  .oc.invalid{background:rgba(95,103,121,.14);color:var(--dim2)}
+
+  .bar{position:relative;height:5px;background:#1b2030;border-radius:3px;width:52px;display:inline-block;
+    vertical-align:middle;margin-left:6px}
+  .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--acc)}
+  .flag{color:var(--warn);cursor:help}
+  .up{color:var(--up)} .down{color:var(--down)} .dim{color:var(--dim2)}
+
+  .empty{padding:44px 22px;text-align:center;color:var(--dim)}
+  .empty b{display:block;color:var(--tx);font-size:15px;margin-bottom:8px}
+  .empty p{max-width:520px;margin:6px auto;font-size:13px;line-height:1.7}
+  .empty code{background:var(--panel2);padding:2px 6px;border-radius:4px;font-size:12px}
+
+  .legend{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .legend h3{margin:0 0 10px;font-size:13px}
+  .legend dl{display:grid;grid-template-columns:130px 1fr;gap:6px 14px;margin:0;font-size:12.5px}
+  .legend dt{color:var(--acc);font-family:ui-monospace,Menlo,monospace}
+  .legend dd{margin:0;color:var(--dim)}
+
+  #detail{margin-top:14px}
+  .back{cursor:pointer;color:var(--dim);font-size:12px}
+  .kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:14px}
+  .kv div{background:var(--panel2);border-radius:7px;padding:9px 11px}
+  .kv .k{color:var(--dim2);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .kv .v{font-family:ui-monospace,Menlo,monospace;font-size:16px;margin-top:2px}
+  .err{background:rgba(255,92,114,.1);border:1px solid rgba(255,92,114,.3);color:#ffb3bd;
+    padding:11px 14px;border-radius:8px;margin-bottom:14px;font-size:13px}
+  @media(max-width:640px){.legend dl{grid-template-columns:1fr}.legend dt{margin-top:6px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>ALPHA<span>HUNTER</span></h1>
+  <span class="sub" id="sub">yükleniyor…</span>
+  <span class="refresh" id="refresh"></span>
+</header>
+
+<div class="strip" id="strip"></div>
+<div id="err"></div>
+
+<nav>
+  <button data-v="board" class="on">Liderlik tablosu</button>
+  <button data-v="calls">Son çağrılar</button>
+  <button data-v="stats">İstatistik</button>
+</nav>
+
+<div id="view"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmtUsd = v => { if(v==null) return '—';
+  const a=Math.abs(v);
+  if(a>=1e9) return '$'+(v/1e9).toFixed(2)+'B';
+  if(a>=1e6) return '$'+(v/1e6).toFixed(2)+'M';
+  if(a>=1e3) return '$'+(v/1e3).toFixed(1)+'K';
+  return '$'+v.toFixed(0); };
+const fmtX = v => v==null ? '—' : v.toFixed(2)+'x';
+const pct = v => v==null ? '—' : (v*100).toFixed(0)+'%';
+const esc = s => String(s??'').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ago = iso => { if(!iso) return '—';
+  const d=(Date.now()-new Date(iso))/1000;
+  if(d<60) return Math.floor(d)+'sn';
+  if(d<3600) return Math.floor(d/60)+'dk';
+  if(d<86400) return Math.floor(d/3600)+'sa';
+  return Math.floor(d/86400)+'g'; };
+const mcls = v => v==null ? 'dim' : (v>=2 ? 'up' : (v<1 ? 'down' : 'dim'));
+const bar = v => `<span class="bar"><i style="width:${Math.max(0,Math.min(1,v||0))*100}%"></i></span>`;
+
+let VIEW='board', TIMER=null, LEFT=60;
+
+async function api(path){
+  const r = await fetch(path);
+  if(r.status===401){ throw new Error('Giriş gerekli — sayfayı yenileyip kullanıcı adı/şifre gir.'); }
+  if(!r.ok){ throw new Error('Sunucu hatası ('+r.status+')'); }
+  return r.json();
+}
+function showErr(m){ $('#err').innerHTML = m ? `<div class="err">${esc(m)}</div>` : ''; }
+
+// ------------------------------------------------------------------ üst şerit
+async function loadStrip(){
+  const o = await api('/api/overview');
+  $('#sub').textContent = `${o.chains.join(', ')} · son ${o.window_days} gün · ${o.win_multiple}x = başarılı`;
+  const t = o.tiers||{}, oc = o.outcomes||{};
+  $('#strip').innerHTML = [
+    ['izlenen hesap', o.accounts],
+    ['çağrı', o.calls],
+    ['token', o.tokens],
+    ['son 24 saat', o.calls_24h],
+    ['başarılı', oc.win||0],
+    ['S+A tier', (t.S||0)+(t.A||0)],
+    ['en yüksek', o.best_multiple ? o.best_multiple.toFixed(0)+'x' : '—'],
+  ].map(([k,v])=>`<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  return o;
+}
+
+// ------------------------------------------------------------- liderlik tablosu
+async function viewBoard(){
+  const tier = $('#fTier')?.value || '';
+  const rows = await api('/api/leaderboard?limit=100'+(tier?'&tier='+tier:''));
+  const body = rows.length ? `<div class="scroll"><table>
+    <thead><tr>
+      <th>#</th><th>hesap</th><th>tier</th><th class="num">alfa</th>
+      <th class="num">isabet</th><th class="num">medyan</th><th class="num">ort. giriş</th>
+      <th class="num">giriş kal.</th><th class="num">özgünlük</th><th class="num">rug yok</th>
+      <th class="num">çağrı/gün</th><th></th>
+    </tr></thead><tbody>${rows.map((r,i)=>`
+      <tr>
+        <td class="num dim">${i+1}</td>
+        <td><a href="#" onclick="openAcc('${esc(r.handle)}');return false">@${esc(r.handle)}</a></td>
+        <td><span class="tier ${r.tier}">${r.tier}</span></td>
+        <td class="num"><b>${r.alpha_score.toFixed(1)}</b></td>
+        <td class="num">${pct(r.win_rate)} <span class="dim">(${r.n_wins}/${r.n_evaluated})</span></td>
+        <td class="num ${mcls(r.median_multiple)}">${fmtX(r.median_multiple)}</td>
+        <td class="num">${fmtUsd(r.avg_entry_mc)}</td>
+        <td class="num">${(r.entry_quality*100).toFixed(0)}${bar(r.entry_quality)}</td>
+        <td class="num">${(r.originality*100).toFixed(0)}${bar(r.originality)}</td>
+        <td class="num">${(r.survivorship*100).toFixed(0)}${bar(r.survivorship)}</td>
+        <td class="num ${r.calls_per_day>5?'down':''}">${r.calls_per_day.toFixed(1)}</td>
+        <td>${r.blacklisted?`<span class="flag" title="${esc(r.blacklist_reason||'kara liste')}">⛔</span>`:''}
+            ${r.clustered?'<span class="flag" title="Koordineli hesap kümesi — bu hesap başkalarıyla aynı coinleri aynı dakikalarda paylaşıyor. Bağımsız sinyal sayılmaz.">⚠</span>':''}</td>
+      </tr>`).join('')}</tbody></table></div>`
+    : emptyBoard();
+
+  $('#view').innerHTML = `<div class="card">
+    <div class="card-head">
+      <h2>Liderlik tablosu</h2>
+      <span class="hint">hesaba tıkla → tüm çağrı geçmişi</span>
+      <div class="ctrl">
+        <select id="fTier" onchange="render()">
+          <option value="">tüm tierlar</option>
+          <option value="S"${tier==='S'?' selected':''}>sadece S</option>
+          <option value="A"${tier==='A'?' selected':''}>A ve üstü</option>
+          <option value="B"${tier==='B'?' selected':''}>B ve üstü</option>
+          <option value="C"${tier==='C'?' selected':''}>C ve üstü</option>
+        </select>
+      </div>
+    </div>${body}</div>
+    <div class="legend"><h3>Sütunlar ne anlama geliyor?</h3><dl>
+      <dt>alfa</dt><dd>0–100 arası bileşik skor. Aşağıdaki beş ölçünün ağırlıklı toplamı, spray ve tutarlılık çarpanlarıyla.</dd>
+      <dt>tier</dt><dd>S ≥80 · A ≥65 · B ≥50 · C ≥35 · D ≥20 · F &lt;20. UNRATED = henüz yeterli çağrı yok.</dd>
+      <dt>isabet</dt><dd>Kaç çağrısı ${'"'}başarılı${'"'} eşiğini geçti. Parantez içi: kazanan / değerlendirilen.</dd>
+      <dt>medyan</dt><dd>Tipik çağrısının kaç kat yaptığı. Ortalama değil medyan — tek bir şanslı 100x tabloyu bozmasın diye.</dd>
+      <dt>ort. giriş</dt><dd>Tweetlediği andaki ortalama piyasa değeri. Düşük olması iyi: erken giriyor demek.</dd>
+      <dt>giriş kal.</dt><dd>Coin&#39;in toplam yükselişinin ne kadarını yakaladı. Düşükse zirveye yakın tweetliyor = copycat.</dd>
+      <dt>özgünlük</dt><dd>Aynı kontratı kaçıncı sırada paylaştı. 100 = ilk keşfeden. Düşükse başkasını kopyalıyor.</dd>
+      <dt>rug yok</dt><dd>Çağırdığı coinlerin ne kadarı likidite çekilerek ölmedi. Düşükse paralı promo şüphesi.</dd>
+      <dt>çağrı/gün</dt><dd>Günde kaç farklı kontrat paylaşıyor. 3&#39;ten sonra ceza başlar — günde 30 CA atan insider değil kumarbazdır.</dd>
+      <dt>⚠ / ⛔</dt><dd>⚠ koordineli hesap kümesi · ⛔ spam nedeniyle kara listede</dd>
+    </dl></div>`;
+}
+
+function emptyBoard(){
+  return `<div class="empty"><b>Henüz skorlanmış hesap yok</b>
+    <p>Bu normal. Sistem önce tweet toplamalı, sonra o tweetlerdeki coinlerin fiyatının ne olduğunu
+    öğrenmeli, ancak ondan sonra puan verebilir.</p>
+    <p>Bot yeni açıldıysa <b>ilk çağrılar birkaç saat</b>, ilk anlamlı skorlar <b>2–3 gün</b> sürer.
+    Bir çağrı en az 7 gün izlendikten sonra kapanır.</p>
+    <p class="dim">Hemen sonuç görmek istersen bildiğin bir hesabı geçmişe dönük taratabilirsin:
+    <code>backfill hesapadi --days 60</code></p></div>`;
+}
+
+// ---------------------------------------------------------------- son çağrılar
+async function viewCalls(){
+  const h = $('#fHours')?.value || '24';
+  const a = $('#fAlpha')?.value || '0';
+  const rows = await api(`/api/calls?hours=${h}&limit=200&min_alpha=${a}`);
+  const body = rows.length ? `<div class="scroll"><table>
+    <thead><tr>
+      <th>ne zaman</th><th>hesap</th><th>tier</th><th>coin</th><th class="num">giriş MC</th>
+      <th class="num">ATH</th><th class="num">gerçekçi</th><th class="num">sıra</th>
+      <th class="num">güvenlik</th><th>sonuç</th><th></th>
+    </tr></thead><tbody>${rows.map(r=>`
+      <tr>
+        <td class="dim">${ago(r.called_at)} önce</td>
+        <td><a href="#" onclick="openAcc('${esc(r.handle)}');return false">@${esc(r.handle)}</a></td>
+        <td><span class="tier ${r.tier}">${r.tier==='UNRATED'?'—':r.tier}</span></td>
+        <td><a href="https://dexscreener.com/${esc(r.chain)}/${esc(r.address)}" target="_blank"
+            rel="noopener">${esc(r.symbol||r.address.slice(0,6))}</a></td>
+        <td class="num">${fmtUsd(r.entry_mc)}</td>
+        <td class="num ${mcls(r.max_multiple)}">${fmtX(r.max_multiple)}</td>
+        <td class="num ${mcls(r.sustained_multiple)}">${fmtX(r.sustained_multiple)}</td>
+        <td class="num">${r.caller_rank ? '#'+r.caller_rank : '—'}</td>
+        <td class="num">${r.security_score==null?'—':(r.security_score*100).toFixed(0)}</td>
+        <td><span class="oc ${r.outcome}">${
+          {win:'BAŞARILI',loss:'tutmadı',rug:'RUG',pending:'izleniyor',invalid:'geçersiz'}[r.outcome]||r.outcome
+        }</span></td>
+        <td>${r.tweet_url?`<a href="${esc(r.tweet_url)}" target="_blank" rel="noopener">tweet</a>`:''}</td>
+      </tr>`).join('')}</tbody></table></div>`
+    : `<div class="empty"><b>Bu aralıkta çağrı yok</b>
+       <p>Süreyi uzatmayı dene, ya da bot henüz yeni açıldıysa biraz bekle.</p></div>`;
+
+  $('#view').innerHTML = `<div class="card">
+    <div class="card-head"><h2>Son çağrılar</h2>
+      <span class="hint">canlı akış — her satır bir tweet + bir kontrat</span>
+      <div class="ctrl">
+        <select id="fHours" onchange="render()">
+          ${[['6','son 6 saat'],['24','son 24 saat'],['72','son 3 gün'],['168','son 7 gün'],['720','son 30 gün']]
+            .map(([v,l])=>`<option value="${v}"${h===v?' selected':''}>${l}</option>`).join('')}
+        </select>
+        <select id="fAlpha" onchange="render()">
+          <option value="0"${a==='0'?' selected':''}>tüm hesaplar</option>
+          <option value="50"${a==='50'?' selected':''}>alfa 50+</option>
+          <option value="65"${a==='65'?' selected':''}>alfa 65+ (A tier)</option>
+          <option value="80"${a==='80'?' selected':''}>alfa 80+ (S tier)</option>
+        </select>
+      </div>
+    </div>${body}</div>
+    <div class="legend"><h3>Sütunlar</h3><dl>
+      <dt>giriş MC</dt><dd>Tweet atıldığı andaki piyasa değeri. Sistemin en kritik ölçümü.</dd>
+      <dt>ATH</dt><dd>Tweetten sonra görülen en yüksek nokta. Kağıt üzerinde — o fiyattan satılamamış olabilir.</dd>
+      <dt>gerçekçi</dt><dd>En az 15 dakika korunan tepe. Asıl bakman gereken sayı bu.</dd>
+      <dt>sıra</dt><dd>Bu kontratı kaçıncı sırada paylaştı. #1 = ilk keşfeden.</dd>
+      <dt>güvenlik</dt><dd>0–100. Mint/freeze yetkisi, ilk 10 cüzdan yoğunluğu ve RugCheck raporundan.</dd>
+      <dt>izleniyor</dt><dd>Çağrı henüz açık — 7 gün dolmadan kesin sonuç verilmez.</dd>
+    </dl></div>`;
+}
+
+// -------------------------------------------------------------------- hesap
+async function openAcc(handle){
+  try{
+    const d = await api('/api/account/'+encodeURIComponent(handle));
+    const s = d.score;
+    const head = s ? `<div class="kv">
+      ${[['alfa skoru', s.alpha_score.toFixed(1)],['tier', s.tier],
+         ['isabet', pct(s.win_rate)+' ('+s.n_wins+'/'+s.n_evaluated+')'],
+         ['medyan kat', fmtX(s.median_multiple)],
+         ['giriş kalitesi', (s.entry_quality*100).toFixed(0)],
+         ['özgünlük', (s.originality*100).toFixed(0)],
+         ['wilson alt sınırı', s.wilson_lb.toFixed(3)],
+         ['çağrı/gün', s.calls_per_day.toFixed(1)],
+         ['spray çarpanı', s.spray_penalty.toFixed(2)]]
+        .map(([k,v])=>`<div><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}
+      </div>` : `<div class="empty"><b>Bu hesap henüz skorlanmadı</b>
+        <p>Yeterli sayıda değerlendirilmiş çağrısı yok.</p></div>`;
+
+    $('#view').innerHTML = `<div class="card" id="detail">
+      <div class="card-head">
+        <span class="back" onclick="render()">← geri</span>
+        <h2>@${esc(d.handle)}</h2>
+        ${s?`<span class="tier ${s.tier}">${s.tier}</span>`:''}
+        <span class="hint">${d.followers? d.followers.toLocaleString('tr')+' takipçi':''}</span>
+        <a class="ctrl" href="https://x.com/${esc(d.handle)}" target="_blank" rel="noopener">X&#39;te aç ↗</a>
+      </div>
+      ${d.blacklisted?`<div class="err" style="margin:14px">⛔ Kara listede: ${esc(d.blacklist_reason||'')}</div>`:''}
+      ${d.cluster?`<div class="err" style="margin:14px;background:rgba(255,179,64,.1);border-color:rgba(255,179,64,.3);color:#ffd9a0">⚠ Koordineli kümede: ${esc(d.cluster)}</div>`:''}
+      ${head}
+      <div class="scroll"><table>
+        <thead><tr><th>zaman</th><th>coin</th><th class="num">giriş MC</th><th class="num">ATH</th>
+          <th class="num">gerçekçi</th><th class="num">giriş kal.</th><th class="num">capture</th>
+          <th class="num">sıra</th><th class="num">veri güveni</th><th>sonuç</th><th></th></tr></thead>
+        <tbody>${d.calls.map(c=>`<tr>
+          <td class="dim">${new Date(c.called_at).toLocaleString('tr',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
+          <td><a href="https://dexscreener.com/${esc(c.chain)}/${esc(c.address)}" target="_blank"
+             rel="noopener">${esc(c.symbol||c.address.slice(0,6))}</a></td>
+          <td class="num">${fmtUsd(c.entry_mc)}</td>
+          <td class="num ${mcls(c.max_multiple)}">${fmtX(c.max_multiple)}</td>
+          <td class="num ${mcls(c.sustained_multiple)}">${fmtX(c.sustained_multiple)}</td>
+          <td class="num">${c.entry_quality==null?'—':(c.entry_quality*100).toFixed(0)}</td>
+          <td class="num">${c.run_capture==null?'—':(c.run_capture*100).toFixed(0)}</td>
+          <td class="num">${c.caller_rank?'#'+c.caller_rank:'—'}</td>
+          <td class="num dim">${(c.entry_confidence*100).toFixed(0)}</td>
+          <td><span class="oc ${c.outcome}">${
+            {win:'BAŞARILI',loss:'tutmadı',rug:'RUG',pending:'izleniyor',invalid:'geçersiz'}[c.outcome]||c.outcome
+          }</span></td>
+          <td>${c.tweet_url?`<a href="${esc(c.tweet_url)}" target="_blank" rel="noopener">tweet</a>`:''}</td>
+        </tr>`).join('')}</tbody></table></div></div>`;
+    showErr('');
+  }catch(e){ showErr(e.message); }
+}
+
+// ---------------------------------------------------------------- istatistik
+async function viewStats(){
+  const o = await api('/api/overview');
+  const oc = o.outcomes||{}, t = o.tiers||{};
+  const row = (k,v)=>`<tr><td>${k}</td><td class="num">${v}</td></tr>`;
+  $('#view').innerHTML = `<div class="card">
+    <div class="card-head"><h2>Sistem durumu</h2>
+      <span class="hint">sunucu saati ${new Date(o.server_time).toLocaleString('tr')}</span></div>
+    <div class="scroll"><table><tbody>
+      ${row('izlenen hesap', o.accounts)}
+      ${row('kaydedilen tweet', o.tweets)}
+      ${row('doğrulanmış token', o.tokens)}
+      ${row('toplam çağrı', o.calls)}
+      ${row('son 24 saatteki çağrı', o.calls_24h)}
+      ${row('son çağrı', o.last_call_at? ago(o.last_call_at)+' önce' : '—')}
+      ${row('en yüksek kat', o.best_multiple? o.best_multiple.toFixed(1)+'x' : '—')}
+    </tbody></table></div></div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-head"><h2>Çağrı sonuçları</h2></div>
+      <div class="scroll"><table><tbody>
+        ${row('başarılı', oc.win||0)}${row('tutmadı', oc.loss||0)}
+        ${row('rug oldu', oc.rug||0)}${row('hâlâ izleniyor', oc.pending||0)}
+        ${row('geçersiz (fiyat çözülemedi / likidite yok)', oc.invalid||0)}
+      </tbody></table></div></div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-head"><h2>Tier dağılımı</h2></div>
+      <div class="scroll"><table><tbody>
+        ${['S','A','B','C','D','F','UNRATED'].map(x=>row(
+          `<span class="tier ${x}">${x}</span>`, t[x]||0)).join('')}
+      </tbody></table></div></div>`;
+}
+
+// ------------------------------------------------------------------- yönetim
+async function render(){
+  try{
+    await loadStrip();
+    if(VIEW==='board') await viewBoard();
+    else if(VIEW==='calls') await viewCalls();
+    else await viewStats();
+    showErr('');
+  }catch(e){ showErr(e.message); }
+  LEFT=60;
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); VIEW=b.dataset.v; render();
+});
+setInterval(()=>{ LEFT--; $('#refresh').textContent = `${LEFT}sn içinde yenilenecek`;
+  if(LEFT<=0) render(); }, 1000);
+render();
+</script>
+</body>
+</html>

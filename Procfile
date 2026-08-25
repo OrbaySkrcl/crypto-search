@@ -1,1 +1,1 @@
-worker: python -m alpha_hunter run
+web: python -m alpha_hunter run

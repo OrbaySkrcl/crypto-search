@@ -363,6 +363,15 @@ async def cmd_alert(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    from .web.app import serve
+    _print(f"[green]pano aciliyor:[/green] http://localhost:{args.port or settings.web_port}")
+    if not settings.web_password:
+        _print("[yellow]uyari: WEB_PASSWORD bos — pano sifresiz. Internete acacaksan doldur.[/yellow]")
+    serve(host=args.host, port=args.port)
+    return 0
+
+
 async def cmd_run(args: argparse.Namespace) -> int:
     from .pipeline.scheduler import run_forever
     init_db()
@@ -428,7 +437,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--limit", type=int, default=15)
     s.set_defaults(fn=cmd_alert, is_async=True)
 
-    s = sub.add_parser("run", help="surekli calis (Railway worker)")
+    s = sub.add_parser("serve", help="sadece web panosunu ac")
+    s.add_argument("--host", default="0.0.0.0")
+    s.add_argument("--port", type=int, default=None)
+    s.set_defaults(fn=cmd_serve, is_async=False)
+
+    s = sub.add_parser("run", help="surekli calis + web panosu (Railway)")
     s.set_defaults(fn=cmd_run, is_async=True)
 
     return p

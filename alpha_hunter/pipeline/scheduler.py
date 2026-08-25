@@ -41,6 +41,25 @@ async def _score_tick() -> None:
     await asyncio.get_running_loop().run_in_executor(None, run_scoring)
 
 
+def _make_web_server():
+    """uvicorn kurulu degilse pano sessizce atlanir, isci calismaya devam eder."""
+    try:
+        import uvicorn
+
+        from ..web.app import app as web_app
+    except ImportError:
+        log.warning("uvicorn/fastapi kurulu degil, web panosu atlaniyor")
+        return None
+    config = uvicorn.Config(
+        web_app,
+        host="0.0.0.0",
+        port=settings.web_port,
+        log_level=settings.log_level.lower(),
+        access_log=False,
+    )
+    return uvicorn.Server(config)
+
+
 async def run_forever() -> None:
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -69,8 +88,18 @@ async def run_forever() -> None:
             _loop("leaderboard", lambda: send_leaderboard(15), 24 * 3600, stop, jitter=300)
         ),
     ]
+    # Web panosu ayni surecte kalkar -> Railway'de tek servis yeter
+    web_server = None
+    if settings.web_enabled:
+        web_server = _make_web_server()
+        if web_server is not None:
+            tasks.append(asyncio.create_task(web_server.serve()))
+            log.info("web panosu :%d portunda", settings.web_port)
+
     await stop.wait()
     log.info("kapatiliyor...")
+    if web_server is not None:
+        web_server.should_exit = True
     for t in tasks:
         t.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)

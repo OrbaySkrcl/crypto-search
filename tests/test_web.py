@@ -1,0 +1,124 @@
+"""Web panosu ve JSON API testleri."""
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from fastapi.testclient import TestClient
+
+from alpha_hunter.config import settings
+from alpha_hunter.db.models import Account, Call, CallOutcome, Token, TokenStatus, Tweet
+from alpha_hunter.db.session import session_scope
+from alpha_hunter.pipeline.score import run_scoring
+
+NOW = datetime.now(timezone.utc)
+
+
+@pytest.fixture()
+def client(db):
+    from alpha_hunter.web.app import create_app
+    return TestClient(create_app())
+
+
+@pytest.fixture()
+def seeded(db):
+    with session_scope() as s:
+        acc = Account(platform="x", handle="tester", followers=5000)
+        s.add(acc)
+        s.flush()
+        for i in range(6):
+            tok = Token(chain="solana", address=f"T{i:043d}", symbol=f"TK{i}",
+                        status=TokenStatus.ACTIVE, supply_estimate=1e9, security_score=0.8)
+            s.add(tok)
+            s.flush()
+            when = NOW - timedelta(days=i * 5 + 1)
+            tw = Tweet(account_id=acc.id, platform_tweet_id=f"tw{i}", posted_at=when,
+                       text="CA:", source="test", url=f"https://x.com/tester/status/{i}")
+            s.add(tw)
+            s.flush()
+            won = i < 4
+            s.add(Call(
+                account_id=acc.id, token_id=tok.id, tweet_id=tw.id, chain="solana",
+                called_at=when, entry_mc_usd=50_000.0, entry_price_usd=5e-5,
+                entry_liquidity_usd=30_000.0, entry_confidence=1.0,
+                max_mc_usd_after=1_000_000.0 if won else 60_000.0,
+                max_multiple=20.0 if won else 1.2,
+                sustained_multiple=18.0 if won else 1.1,
+                entry_quality=0.7, run_capture=0.8, originality=1.0, caller_rank=1,
+                outcome=CallOutcome.WIN if won else CallOutcome.LOSS, is_closed=True,
+            ))
+    run_scoring()
+    from alpha_hunter.web.app import create_app
+    return TestClient(create_app())
+
+
+def test_health(client):
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+
+def test_index_serves_dashboard(client):
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "ALPHA" in r.text
+    assert "Liderlik tablosu" in r.text
+
+
+def test_overview_on_empty_db(client):
+    d = client.get("/api/overview").json()
+    assert d["accounts"] == 0
+    assert d["calls"] == 0
+    assert d["tiers"] == {}
+    assert d["chains"] == settings.chain_list
+
+
+def test_leaderboard_returns_scored_account(seeded):
+    rows = seeded.get("/api/leaderboard").json()
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["handle"] == "tester"
+    assert r["n_evaluated"] == 6
+    assert r["n_wins"] == 4
+    assert r["alpha_score"] > 0
+    assert r["median_multiple"] > 1
+
+
+def test_leaderboard_tier_filter(seeded):
+    assert seeded.get("/api/leaderboard?tier=S").json() == []
+    assert seeded.get("/api/leaderboard?tier=F").json() != []
+    assert seeded.get("/api/leaderboard?tier=Z").status_code == 422
+
+
+def test_account_detail(seeded):
+    d = seeded.get("/api/account/tester").json()
+    assert d["handle"] == "tester"
+    assert len(d["calls"]) == 6
+    assert d["score"]["n_wins"] == 4
+    assert d["calls"][0]["tweet_url"].startswith("https://x.com/")
+    assert seeded.get("/api/account/@tester").status_code == 200
+
+
+def test_account_not_found(client):
+    assert client.get("/api/account/yokboyle").status_code == 404
+
+
+def test_recent_calls_window_and_filter(seeded):
+    assert len(seeded.get("/api/calls?hours=48").json()) == 1
+    assert len(seeded.get("/api/calls?hours=720").json()) == 6
+    assert seeded.get("/api/calls?hours=720&min_alpha=99").json() == []
+
+
+def test_calls_validation(client):
+    assert client.get("/api/calls?hours=0").status_code == 422
+    assert client.get("/api/calls?min_alpha=500").status_code == 422
+
+
+def test_password_protection(db, monkeypatch):
+    monkeypatch.setattr(settings, "web_password", "gizli")
+    monkeypatch.setattr(settings, "web_user", "admin")
+    from alpha_hunter.web.app import create_app
+    c = TestClient(create_app())
+    assert c.get("/api/overview").status_code == 401
+    assert c.get("/api/overview", auth=("admin", "yanlis")).status_code == 401
+    assert c.get("/api/overview", auth=("admin", "gizli")).status_code == 200
+    # health korumasizdir -- Railway saglik kontrolu icin
+    assert c.get("/health").status_code == 200
