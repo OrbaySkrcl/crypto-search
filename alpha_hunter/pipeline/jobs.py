@@ -12,6 +12,7 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db.models import Job, JobStatus, utcnow
 from ..db.session import session_scope
 
@@ -48,6 +49,35 @@ def clamp_days(days: int | None) -> int:
     except (TypeError, ValueError):
         d = 60
     return max(MIN_DAYS, min(MAX_DAYS, d))
+
+
+def enqueue_token_profile(
+    address: str, chain: str | None = None, source: str = "web",
+    notify_chat_id: str | None = None,
+) -> tuple[Job | None, str]:
+    """Bir tokenin erken alicilarini cuzdan cagrilarina cevirmek icin is acar."""
+    addr = (address or "").strip()
+    if len(addr) < 30:
+        return (None, "gecerli bir kontrat adresi gir")
+    chain = (chain or settings.chain_list[0]).lower()
+
+    with session_scope() as s:
+        active = s.scalar(
+            select(Job).where(
+                Job.kind == "profile_token", Job.target == addr,
+                Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+            )
+        )
+        if active:
+            return (active, f"{addr[:10]}... zaten kuyrukta (#{active.id})")
+        job = Job(
+            kind="profile_token", target=addr, params={"chain": chain},
+            source=source, status=JobStatus.QUEUED, notify_chat_id=notify_chat_id,
+        )
+        s.add(job)
+        s.flush()
+        s.expunge(job)
+        return (job, f"{addr[:10]}... erken alicilari icin kuyruga alindi — is #{job.id}")
 
 
 def enqueue_backfill(
@@ -142,6 +172,7 @@ def job_to_dict(job: Job) -> dict:
         "kind": job.kind,
         "target": job.target,
         "days": (job.params or {}).get("days"),
+        "chain": (job.params or {}).get("chain"),
         "source": job.source,
         "status": job.status.value if hasattr(job.status, "value") else str(job.status),
         "progress": job.progress,
@@ -202,6 +233,47 @@ def diagnose_empty_result(stats: dict) -> str:
         f"{seen} tweette {stats.get('ca_candidates', 0)} adres adayi bulundu ama "
         "hicbiri DEX'te dogrulanamadi (silinmis token ya da yanlis pozitif olabilir)."
     )
+
+
+async def run_token_profile_job(job_id: int) -> None:
+    """Kosan bir tokenin erken alicilarini cikarir."""
+    from ..onchain.profiler import profile_token
+
+    with session_scope() as s:
+        job = s.get(Job, job_id)
+        if job is None:
+            return
+        address = job.target
+        chain = (job.params or {}).get("chain") or settings.chain_list[0]
+
+    set_progress(job_id, f"{address[:10]}... erken alicilari cikariliyor")
+    try:
+        stats = await profile_token(chain, address)
+    except Exception as exc:
+        log.exception("token profillenemedi: %s", address)
+        finish(job_id, error=f"{type(exc).__name__}: {exc}")
+        return
+
+    finish(job_id, result={
+        "kind": "profile_token", "address": address, "chain": chain,
+        "found": bool(stats.get("yeni_cagri")),
+        "wallets": stats.get("cuzdan", 0),
+        "new_calls": stats.get("yeni_cagri", 0),
+        "trades": stats.get("alim", 0),
+        "skipped_late": stats.get("elenen", 0),
+        "reason": stats.get("not"),
+    })
+
+
+async def run_job(job_id: int) -> None:
+    """Is turune gore dogru calistiriciyi secer."""
+    with session_scope() as s:
+        job = s.get(Job, job_id)
+        kind = job.kind if job else None
+    if kind == "profile_token":
+        await run_token_profile_job(job_id)
+    else:
+        await run_backfill_job(job_id)
 
 
 async def run_backfill_job(job_id: int) -> None:

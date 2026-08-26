@@ -150,6 +150,48 @@ def create_app() -> FastAPI:
             data = jobq.job_to_dict(fresh) if fresh else jobq.job_to_dict(job)
         return JSONResponse({"message": msg, "job": data}, status_code=202)
 
+    # ------------------------------------------------ zincir uzeri cuzdanlar
+    @app.get("/api/wallets", dependencies=[Depends(_check_auth)])
+    def api_wallets(
+        limit: int = Query(50, ge=1, le=300),
+        include_bots: bool = Query(False),
+    ) -> JSONResponse:
+        with session_scope() as s:
+            return JSONResponse(
+                queries.wallet_leaderboard(s, limit=limit, hide_bots=not include_bots)
+            )
+
+    @app.get("/api/links", dependencies=[Depends(_check_auth)])
+    def api_links(limit: int = Query(25, ge=1, le=100)) -> JSONResponse:
+        """Cuzdan <-> Twitter hesabi eslesmeleri."""
+        with session_scope() as s:
+            return JSONResponse(queries.wallet_links(s, limit=limit))
+
+    @app.post("/api/profile-token", dependencies=[Depends(_check_auth)])
+    def api_profile_token(payload: dict = Body(...)) -> JSONResponse:
+        """Kosan bir tokenin erken alicilarini cikarmak icin is kuyruguna birakir."""
+        address = str(payload.get("address") or "").strip()
+        chain = str(payload.get("chain") or "").strip() or None
+        job, msg = jobq.enqueue_token_profile(address, chain, source="web")
+        if job is None:
+            raise HTTPException(status_code=422, detail=msg)
+        with session_scope() as s:
+            from ..db.models import Job
+            fresh = s.get(Job, job.id)
+            data = jobq.job_to_dict(fresh) if fresh else jobq.job_to_dict(job)
+        return JSONResponse({"message": msg, "job": data}, status_code=202)
+
+    @app.get("/api/diag/birdeye", dependencies=[Depends(_check_auth)])
+    async def api_diag_birdeye(
+        address: str = Query(...), chain: str = Query("solana")
+    ) -> JSONResponse:
+        """Zincir islem kaynagina tek gercek cagri -- Apify dersinin uygulamasi."""
+        from ..http import HttpClient
+        from ..onchain.trades import TradeSource
+
+        async with HttpClient() as http:
+            return JSONResponse(await TradeSource(http).diagnose(chain, address))
+
     @app.get("/api/diag/apify", dependencies=[Depends(_check_auth)])
     async def api_diag_apify(handle: str = Query("elonmusk")) -> JSONResponse:
         """Apify'a tek bir gercek cagri yapar ve ham sonucu dondurur.

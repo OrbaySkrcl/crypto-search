@@ -241,3 +241,48 @@ def overview(session: Session) -> dict:
         "win_multiple": settings.win_multiple,
         "server_time": utcnow().isoformat(),
     }
+
+
+# --------------------------------------------------------------------------- #
+#  Zincir uzeri cuzdanlar
+# --------------------------------------------------------------------------- #
+def wallet_leaderboard(session: Session, limit: int = 50, hide_bots: bool = True) -> list[dict]:
+    from ..db.models import Wallet
+    from ..scoring.engine import latest_wallet_scores
+
+    out: list[dict] = []
+    for sc in latest_wallet_scores(session, limit=limit, hide_bots=hide_bots):
+        w = session.get(Wallet, sc.wallet_id)
+        if w is None:
+            continue
+        acc = session.get(Account, w.linked_account_id) if w.linked_account_id else None
+        out.append({
+            "address": w.address,
+            "chain": w.chain,
+            "label": w.label,
+            "tier": sc.tier.value if hasattr(sc.tier, "value") else str(sc.tier),
+            "alpha_score": round(sc.alpha_score, 1),
+            "win_rate": round(sc.win_rate, 3),
+            "n_wins": sc.n_wins,
+            "n_evaluated": sc.n_evaluated,
+            "median_multiple": round(sc.median_multiple, 2),
+            "median_excess": round(sc.median_excess, 2),
+            "tradeability": round(sc.tradeability, 3),
+            "entry_quality": round(sc.entry_quality, 3),
+            "avg_entry_mc": sc.avg_entry_mc_usd,
+            "calls_per_day": round(sc.calls_per_day, 2),
+            "distinct_tokens": w.distinct_tokens,
+            "median_entry_delay_sec": w.median_entry_delay_sec,
+            "is_bot": w.is_bot,
+            "bot_reason": w.bot_reason,
+            "linked_handle": acc.handle if acc else None,
+            "link_confidence": w.link_confidence,
+            "link_evidence": w.link_evidence,
+        })
+    return out
+
+
+def wallet_links(session: Session, limit: int = 25) -> list[dict]:
+    from ..onchain.linker import linked_summary
+
+    return linked_summary(session, limit=limit)

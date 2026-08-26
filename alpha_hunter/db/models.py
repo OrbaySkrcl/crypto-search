@@ -67,6 +67,17 @@ class TokenStatus(str, enum.Enum):
     INVALID = "invalid"      # DEX'te bulunamadi / token degil
 
 
+class CallSource(str, enum.Enum):
+    """Bir cagri nereden geldi?
+
+    TWEET  : birisi kontrat adresini paylasti
+    WALLET : birisi tokeni satin aldi  <- zincir uzerinde, tanim geregi daha erken
+    """
+
+    TWEET = "tweet"
+    WALLET = "wallet"
+
+
 class CallOutcome(str, enum.Enum):
     PENDING = "pending"      # degerlendirme penceresi acik
     WIN = "win"
@@ -139,6 +150,46 @@ class AccountCluster(Base):
 # --------------------------------------------------------------------------- #
 #  Tokenlar
 # --------------------------------------------------------------------------- #
+class Wallet(Base):
+    """Zincir uzerindeki bir alici.
+
+    Twitter hesabinin zincir karsiligi. Ayni skorlama motoru ikisini de
+    puanliyor -- fark su ki cuzdan verisi bedava, eksiksiz ve tanim geregi
+    tweet'ten daha erken: insan once alir, sonra tweetler.
+    """
+
+    __tablename__ = "wallets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chain: Mapped[str] = mapped_column(String(24), index=True)
+    address: Mapped[str] = mapped_column(String(64), index=True)
+    label: Mapped[str | None] = mapped_column(String(128))
+
+    first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+    # --- Bot / sniper elemesi --------------------------------------------- #
+    # Ham kazanma oraninda botlar uste cikar; onlari ayirt etmek sart.
+    median_hold_seconds: Mapped[int | None] = mapped_column(Integer)
+    median_entry_delay_sec: Mapped[int | None] = mapped_column(Integer)
+    distinct_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    is_bot: Mapped[bool] = mapped_column(Boolean, default=False)
+    bot_reason: Mapped[str | None] = mapped_column(String(160))
+    is_blacklisted: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # --- Twitter eslesmesi (Asama 3) --------------------------------------- #
+    # Bu cuzdan surekli @x'in tweetinden hemen once aliyorsa, @x ya bu cuzdanin
+    # sahibidir ya da ondan besleniyordur.
+    linked_account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"), index=True)
+    link_confidence: Mapped[float | None] = mapped_column(Float)
+    link_evidence: Mapped[dict | None] = mapped_column(JSON)
+
+    calls: Mapped[list[Call]] = relationship(back_populates="wallet")
+    scores: Mapped[list[WalletScore]] = relationship(back_populates="wallet")
+
+    __table_args__ = (UniqueConstraint("chain", "address", name="uq_wallet_chain_address"),)
+
+
 class Token(Base):
     __tablename__ = "tokens"
 
@@ -250,12 +301,22 @@ class Call(Base):
     __tablename__ = "calls"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), index=True)
+    # Kaynak: tweet ise account_id+tweet_id, zincir ise wallet_id dolu olur.
+    source: Mapped[CallSource] = mapped_column(
+        Enum(CallSource, native_enum=False, length=12), default=CallSource.TWEET, index=True
+    )
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"), index=True)
+    tweet_id: Mapped[int | None] = mapped_column(ForeignKey("tweets.id"), index=True)
+    wallet_id: Mapped[int | None] = mapped_column(ForeignKey("wallets.id"), index=True)
+
     token_id: Mapped[int] = mapped_column(ForeignKey("tokens.id"), index=True)
-    tweet_id: Mapped[int] = mapped_column(ForeignKey("tweets.id"), index=True)
     chain: Mapped[str] = mapped_column(String(24), index=True)
 
     called_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
+
+    # Cuzdan cagrilarinda: ne kadar dolarlik aldi (inanc buyuklugu)
+    buy_usd: Mapped[float | None] = mapped_column(Float)
+    tx_signature: Mapped[str | None] = mapped_column(String(96))
 
     # --- KURAL 1: tweet anindaki fotograf (T1) ---------------------------- #
     entry_price_usd: Mapped[float | None] = mapped_column(Float)
@@ -316,11 +377,15 @@ class Call(Base):
     account: Mapped[Account] = relationship(back_populates="calls")
     token: Mapped[Token] = relationship(back_populates="calls")
     tweet: Mapped[Tweet] = relationship(back_populates="calls")
+    wallet: Mapped[Wallet] = relationship(back_populates="calls")
 
     __table_args__ = (
         # Ayni tweet ayni tokeni iki kez cagirmis sayilmasin
         UniqueConstraint("tweet_id", "token_id", name="uq_call_tweet_token"),
+        # Ayni cuzdanin ayni islemi iki kez sayilmasin
+        UniqueConstraint("wallet_id", "tx_signature", name="uq_call_wallet_tx"),
         Index("ix_call_account_called", "account_id", "called_at"),
+        Index("ix_call_wallet_called", "wallet_id", "called_at"),
         Index("ix_call_token_called", "token_id", "called_at"),
         Index("ix_call_pending", "is_closed", "last_evaluated_at"),
     )
@@ -380,6 +445,55 @@ class AccountScore(Base):
 # --------------------------------------------------------------------------- #
 #  Isletme kayitlari
 # --------------------------------------------------------------------------- #
+class WalletScore(Base):
+    """AccountScore'un cuzdan karsiligi -- ayni alanlar, ayni matematik."""
+
+    __tablename__ = "wallet_scores"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    wallet_id: Mapped[int] = mapped_column(ForeignKey("wallets.id"), index=True)
+    computed_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+    window_days: Mapped[int] = mapped_column(Integer)
+
+    n_calls: Mapped[int] = mapped_column(Integer, default=0)
+    n_evaluated: Mapped[int] = mapped_column(Integer, default=0)
+    n_wins: Mapped[int] = mapped_column(Integer, default=0)
+    n_moons: Mapped[int] = mapped_column(Integer, default=0)
+    n_rugs: Mapped[int] = mapped_column(Integer, default=0)
+
+    win_rate: Mapped[float] = mapped_column(Float, default=0.0)
+    wilson_lb: Mapped[float] = mapped_column(Float, default=0.0)
+    median_multiple: Mapped[float] = mapped_column(Float, default=0.0)
+    p90_multiple: Mapped[float] = mapped_column(Float, default=0.0)
+    avg_entry_mc_usd: Mapped[float | None] = mapped_column(Float)
+    median_buy_usd: Mapped[float | None] = mapped_column(Float)
+
+    magnitude: Mapped[float] = mapped_column(Float, default=0.0)
+    market_edge: Mapped[float] = mapped_column(Float, default=0.0)
+    median_excess: Mapped[float] = mapped_column(Float, default=0.0)
+    tradeability: Mapped[float] = mapped_column(Float, default=0.0)
+    entry_quality: Mapped[float] = mapped_column(Float, default=0.0)
+    survivorship: Mapped[float] = mapped_column(Float, default=0.0)
+    consistency: Mapped[float] = mapped_column(Float, default=0.0)
+
+    calls_per_day: Mapped[float] = mapped_column(Float, default=0.0)
+    spray_penalty: Mapped[float] = mapped_column(Float, default=1.0)
+    data_confidence: Mapped[float] = mapped_column(Float, default=0.0)
+
+    alpha_score: Mapped[float] = mapped_column(Float, default=0.0, index=True)
+    tier: Mapped[Tier] = mapped_column(
+        Enum(Tier, native_enum=False, length=8), default=Tier.UNRATED, index=True
+    )
+    breakdown: Mapped[dict | None] = mapped_column(JSON)
+
+    wallet: Mapped[Wallet] = relationship(back_populates="scores")
+
+    __table_args__ = (
+        UniqueConstraint("wallet_id", "computed_at", name="uq_wscore_wallet_time"),
+        Index("ix_wscore_latest", "wallet_id", "computed_at"),
+    )
+
+
 class IngestRun(Base):
     __tablename__ = "ingest_runs"
 

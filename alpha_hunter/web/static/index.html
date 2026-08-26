@@ -81,6 +81,7 @@
     vertical-align:middle;margin-left:6px}
   .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--acc)}
   .flag{color:var(--warn);cursor:help}
+  .warn{color:var(--warn)}
   .up{color:var(--up)} .down{color:var(--down)} .dim{color:var(--dim2)}
 
   .empty{padding:44px 22px;text-align:center;color:var(--dim)}
@@ -146,6 +147,7 @@
 <nav>
   <button data-v="board" class="on">Liderlik tablosu</button>
   <button data-v="calls">Son çağrılar</button>
+  <button data-v="wallets">Cüzdanlar</button>
   <button data-v="tara">Hesap tara</button>
   <button data-v="stats">İstatistik</button>
 </nav>
@@ -385,6 +387,87 @@ async function openAcc(handle){
   }catch(e){ showErr(e.message); }
 }
 
+// ---------------------------------------------------------------- cüzdanlar
+async function viewWallets(){
+  const botlar = $('#wBots')?.checked ? '&include_bots=true' : '';
+  let rows = [], links = [];
+  try{
+    rows = await api('/api/wallets?limit=60'+botlar);
+    links = await api('/api/links?limit=20');
+  }catch(e){ showErr(e.message); }
+
+  const body = rows.length ? `<div class="scroll"><table>
+    <thead><tr>
+      <th>#</th><th>cüzdan</th><th>tier</th><th class="num">alfa</th>
+      <th class="num">isabet</th><th class="num">medyan</th><th class="num">piyasa üstü</th>
+      <th class="num">ort. giriş</th><th class="num">giriş kal.</th>
+      <th class="num">token</th><th class="num">giriş gecikmesi</th><th>bağlantı</th>
+    </tr></thead><tbody>${rows.map((r,i)=>{
+      const gec = r.median_entry_delay_sec;
+      const gecStr = gec==null ? '—' : (gec<90 ? gec+'sn' : (gec<5400 ? Math.round(gec/60)+'dk' : Math.round(gec/3600)+'sa'));
+      return `<tr>
+        <td class="num dim">${i+1}</td>
+        <td><a href="https://solscan.io/account/${esc(r.address)}" target="_blank" rel="noopener"
+            title="${esc(r.address)}">${esc(r.address.slice(0,6))}…${esc(r.address.slice(-4))}</a>
+          ${r.is_bot?`<span class="flag" title="${esc(r.bot_reason||'')}">🤖</span>`:''}</td>
+        <td><span class="tier ${r.tier}">${r.tier==='UNRATED'?'—':r.tier}</span></td>
+        <td class="num"><b>${r.alpha_score.toFixed(1)}</b></td>
+        <td class="num">${pct(r.win_rate)} <span class="dim">(${r.n_wins}/${r.n_evaluated})</span></td>
+        <td class="num ${mcls(r.median_multiple)}">${fmtX(r.median_multiple)}</td>
+        <td class="num ${(r.median_excess||0)>=1.5?'up':((r.median_excess||0)<1?'down':'dim')}">${
+          r.median_excess ? r.median_excess.toFixed(2)+'x' : '—'}</td>
+        <td class="num">${fmtUsd(r.avg_entry_mc)}</td>
+        <td class="num">${(r.entry_quality*100).toFixed(0)}${bar(r.entry_quality)}</td>
+        <td class="num">${r.distinct_tokens}</td>
+        <td class="num ${gec!=null&&gec<60?'warn':''}">${gecStr}</td>
+        <td>${r.linked_handle
+          ? `<a href="#" onclick="openAcc('${esc(r.linked_handle)}');return false">@${esc(r.linked_handle)}</a>
+             <span class="dim">${((r.link_confidence||0)*100).toFixed(0)}%</span>`
+          : '<span class="dim">—</span>'}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`
+    : `<div class="empty"><b>Henüz cüzdan profili yok</b>
+       <p>Koşmuş bir tokenin kontrat adresini <b>Hesap tara</b> sekmesindeki
+       “Token erken alıcıları” kutusuna gir. Sistem o tokeni ilk kimlerin aldığını
+       zincirden çıkarır ve aynı algoritmayla puanlar.</p>
+       <p class="dim">Cüzdan verisi tweet'ten daha erkendir — insan önce alır, sonra tweetler.</p></div>`;
+
+  const linkBody = links.length ? `<div class="scroll"><table>
+    <thead><tr><th>cüzdan</th><th>Twitter hesabı</th><th class="num">güven</th>
+      <th class="num">kaç token</th><th class="num">medyan öncelik</th></tr></thead>
+    <tbody>${links.map(l=>`<tr>
+      <td><a href="https://solscan.io/account/${esc(l.wallet)}" target="_blank" rel="noopener">${
+        esc(l.wallet.slice(0,6))}…${esc(l.wallet.slice(-4))}</a></td>
+      <td><a href="#" onclick="openAcc('${esc(l.handle||'')}');return false">@${esc(l.handle||'?')}</a></td>
+      <td class="num"><b>${((l.confidence||0)*100).toFixed(0)}%</b></td>
+      <td class="num">${l.token_count}</td>
+      <td class="num">${l.median_lead_sec<90?l.median_lead_sec+'sn':Math.round(l.median_lead_sec/60)+'dk'} önce</td>
+    </tr>`).join('')}</tbody></table></div>`
+    : `<div class="empty" style="padding:26px"><b>Henüz eşleşme yok</b>
+       <p>Bir cüzdanın, bir hesabın tweetinden hemen önce alma deseni en az
+       ${'3'} farklı tokende tekrarlanınca burada görünür.</p></div>`;
+
+  $('#view').innerHTML = `<div class="card">
+    <div class="card-head"><h2>Cüzdan sıralaması</h2>
+      <span class="hint">zincirden çıkarılmış erken alıcılar — tweet'ten önce</span>
+      <div class="ctrl"><label style="font-size:12px;color:var(--dim);cursor:pointer">
+        <input type="checkbox" id="wBots" onchange="render()" ${botlar?'checked':''}
+          style="vertical-align:-2px"> botları da göster</label></div>
+    </div>${body}</div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="card-head"><h2>Cüzdan ↔ Twitter eşleşmeleri</h2>
+      <span class="hint">tweetten önce alan cüzdanlar</span></div>
+    ${linkBody}</div>
+
+  <div class="legend"><h3>Bu tablo neden Twitter tablosundan daha değerli?</h3><dl>
+    <dt>zamanlama</dt><dd>Alım her zaman tweetten öncedir. İnsan önce alır, sonra tweetler — tweet çıkış likiditesidir.</dd>
+    <dt>giriş gecikmesi</dt><dd>Havuz açıldıktan kaç saniye sonra almış. 60 saniyenin altı sürekliyse bu bir sniper botudur, insan alfası değil.</dd>
+    <dt>token</dt><dd>Kaç farklı tokene dokunmuş. Çok yüksekse tarama botu — 🤖 ile işaretlenir ve sıralamadan çıkarılır.</dd>
+    <dt>bağlantı</dt><dd>Bu cüzdan hangi Twitter hesabının tweetlerinden hemen önce alıyor. Yüksek güven = o hesap muhtemelen bu cüzdanı kullanıyor.</dd>
+  </dl></div>`;
+}
+
 // ------------------------------------------------------------------ tarama
 let JOBTIMER = null;
 
@@ -407,6 +490,22 @@ async function viewScan(){
       <button class="go alt" type="button" id="jDiag">Bağlantı testi</button>
     </form>
     <div id="jMsg"></div>
+    <div style="border-top:1px solid var(--line);margin-top:4px">
+      <form class="form" id="tokForm">
+        <div class="fld" style="flex:1;min-width:260px;max-width:420px">
+          <label for="tokAddr">Token erken alıcıları — kontrat adresi</label>
+          <input id="tokAddr" placeholder="koşmuş bir tokenin CA'si" autocomplete="off"
+                 spellcheck="false" required>
+        </div>
+        <button class="go alt" type="submit" id="tokGo">Erken alıcıları çıkar</button>
+      </form>
+      <div style="padding:0 16px 14px;color:var(--dim2);font-size:12.5px;line-height:1.6">
+        Zaten koşmuş bir tokenin adresini gir; sistem o tokeni <b>ilk kimlerin aldığını</b>
+        zincirden çıkarır, cüzdanları puanlar ve Cüzdanlar sekmesine ekler.
+        Botlar otomatik ayıklanır.
+      </div>
+      <div id="tokMsg"></div>
+    </div>
     <div style="padding:0 16px 14px;color:var(--dim2);font-size:12.5px;line-height:1.6">
       Tarama arka planda çalışır — sayfayı kapatabilirsin. Ücretsiz fiyat API'si yavaş
       olduğu için 60 günlük bir hesap birkaç dakika sürebilir. Telegram'dan da
@@ -463,6 +562,27 @@ async function viewScan(){
     }
   };
 
+  $('#tokForm').onsubmit = async e => {
+    e.preventDefault();
+    const address = $('#tokAddr').value.trim();
+    if(!address) return;
+    $('#tokGo').disabled = true;
+    $('#tokMsg').innerHTML = '';
+    try{
+      const r = await fetch('/api/profile-token', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({address}),
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.detail || 'istek reddedildi');
+      $('#tokMsg').innerHTML = `<div class="ok">${esc(d.message)}</div>`;
+      $('#tokAddr').value = '';
+      await loadJobs();
+    }catch(e){
+      $('#tokMsg').innerHTML = `<div class="err" style="margin:0 16px 14px">${esc(e.message)}</div>`;
+    }finally{ $('#tokGo').disabled = false; }
+  };
+
   $('#scanForm').onsubmit = async e => {
     e.preventDefault();
     const handle = $('#jHandle').value.trim().replace(/^@/, '');
@@ -504,7 +624,7 @@ async function loadJobs(){
   } else {
     const lbl = {queued:'sırada', running:'çalışıyor', done:'bitti', failed:'hata'};
     el.innerHTML = `<div class="scroll"><table>
-      <thead><tr><th>#</th><th>hesap</th><th class="num">gün</th><th>durum</th>
+      <thead><tr><th>#</th><th>hedef</th><th class="num">gün</th><th>durum</th>
         <th>sonuç</th><th class="num">alfa</th><th class="num">isabet</th>
         <th class="num">medyan</th><th>kaynak</th></tr></thead>
       <tbody>${rows.map(j=>{
@@ -584,6 +704,7 @@ async function render(){
     await loadStrip();
     if(VIEW==='board') await viewBoard();
     else if(VIEW==='calls') await viewCalls();
+    else if(VIEW==='wallets') await viewWallets();
     else if(VIEW==='tara') await viewScan();
     else await viewStats();
     showErr('');

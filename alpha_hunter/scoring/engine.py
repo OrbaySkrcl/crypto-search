@@ -9,7 +9,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..db.models import Account, AccountScore, Call, CallOutcome, Tier, utcnow
+from ..db.models import (
+    Account,
+    AccountScore,
+    Call,
+    CallOutcome,
+    Tier,
+    Wallet,
+    WalletScore,
+    utcnow,
+)
 from . import market as MK
 from . import metrics as M
 
@@ -18,10 +27,11 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class ScoreResult:
-    account_id: int
-    handle: str
+    account_id: int          # hesap ya da cuzdan kimligi
+    handle: str              # @handle ya da cuzdan adresi
     alpha_score: float
     tier: str
+    kind: str = "account"    # "account" | "wallet"
     n_calls: int = 0
     n_evaluated: int = 0
     n_wins: int = 0
@@ -57,17 +67,60 @@ WEIGHTS = {
 
 
 def score_account(session: Session, account: Account, now: datetime | None = None) -> ScoreResult:
+    """Twitter hesabini puanlar."""
     now = now or utcnow()
     since = now - timedelta(days=settings.score_window_days)
-
-    calls: list[Call] = list(
+    calls = list(
         session.scalars(
             select(Call).where(Call.account_id == account.id, Call.called_at >= since)
         )
     )
+    return _score_calls(
+        session, calls, now,
+        subject_id=account.id, label=account.handle, kind="account",
+        blacklisted=account.is_blacklisted,
+    )
 
+
+def score_wallet(session: Session, wallet: Wallet, now: datetime | None = None) -> ScoreResult:
+    """Cuzdani puanlar -- AYNI matematik, farkli kaynak.
+
+    Cagri tanimi degisiyor ("aldi" vs "tweetledi") ama guvenilirlik, buyukluk,
+    piyasa ustu getiri, giris kalitesi, alinabilirlik olculeri aynen gecerli.
+    Botlar ayrica isaretlenip skoru sifirlanir.
+    """
+    now = now or utcnow()
+    since = now - timedelta(days=settings.score_window_days)
+    calls = list(
+        session.scalars(
+            select(Call).where(Call.wallet_id == wallet.id, Call.called_at >= since)
+        )
+    )
+    res = _score_calls(
+        session, calls, now,
+        subject_id=wallet.id, label=wallet.address, kind="wallet",
+        blacklisted=wallet.is_blacklisted or wallet.is_bot,
+    )
+    if wallet.is_bot:
+        res.breakdown["bot"] = wallet.bot_reason
+    return res
+
+
+def _score_calls(
+    session: Session,
+    calls: list[Call],
+    now: datetime,
+    *,
+    subject_id: int,
+    label: str,
+    kind: str,
+    blacklisted: bool,
+) -> ScoreResult:
+    """Kaynaktan bagimsiz cekirdek. Twitter hesabi da cuzdan da buradan gecer."""
+    since = now - timedelta(days=settings.score_window_days)
     res = ScoreResult(
-        account_id=account.id, handle=account.handle, alpha_score=0.0, tier=Tier.UNRATED.value
+        account_id=subject_id, handle=label, alpha_score=0.0,
+        tier=Tier.UNRATED.value, kind=kind,
     )
     res.n_calls = len(calls)
     if not calls:
@@ -182,7 +235,7 @@ def score_account(session: Session, account: Account, now: datetime | None = Non
     )
     res.tier = M.tier_for(res.alpha_score, res.n_evaluated, settings.min_calls_for_rating)
 
-    if account.is_blacklisted:
+    if blacklisted:
         res.alpha_score = 0.0
         res.tier = Tier.F.value
 
@@ -200,6 +253,7 @@ def score_account(session: Session, account: Account, now: datetime | None = Non
         "data_confidence": round(res.data_confidence, 4),
         "weights": WEIGHTS,
         "window_days": settings.score_window_days,
+        "kind": kind,
     }
     return res
 
@@ -239,12 +293,77 @@ def persist_score(session: Session, res: ScoreResult, now: datetime | None = Non
     return row
 
 
+def persist_wallet_score(session: Session, res: ScoreResult, now: datetime | None = None) -> WalletScore:
+    now = now or utcnow()
+    row = WalletScore(
+        wallet_id=res.account_id, computed_at=now, window_days=settings.score_window_days,
+        n_calls=res.n_calls, n_evaluated=res.n_evaluated, n_wins=res.n_wins,
+        n_moons=res.n_moons, n_rugs=res.n_rugs, win_rate=res.win_rate,
+        wilson_lb=res.wilson_lb, median_multiple=res.median_multiple,
+        p90_multiple=res.p90_multiple, avg_entry_mc_usd=res.avg_entry_mc,
+        magnitude=res.magnitude, market_edge=res.market_edge,
+        median_excess=res.median_excess, tradeability=res.tradeability,
+        entry_quality=res.entry_quality, survivorship=res.survivorship,
+        consistency=res.consistency, calls_per_day=res.calls_per_day,
+        spray_penalty=res.spray_penalty, data_confidence=res.data_confidence,
+        alpha_score=res.alpha_score, tier=Tier(res.tier), breakdown=res.breakdown,
+    )
+    session.add(row)
+    return row
+
+
+def score_all_wallets(session: Session, min_calls: int = 2) -> list[ScoreResult]:
+    now = utcnow()
+    since = now - timedelta(days=settings.score_window_days)
+    ids = session.scalars(
+        select(Call.wallet_id)
+        .where(Call.wallet_id.isnot(None), Call.called_at >= since)
+        .group_by(Call.wallet_id)
+        .having(func.count(Call.id) >= min_calls)
+    ).all()
+
+    out: list[ScoreResult] = []
+    for wid in ids:
+        w = session.get(Wallet, wid)
+        if w is None:
+            continue
+        res = score_wallet(session, w, now=now)
+        persist_wallet_score(session, res, now=now)
+        out.append(res)
+    session.flush()
+    out.sort(key=lambda r: r.alpha_score, reverse=True)
+    log.info("%d cuzdan skorlandi", len(out))
+    return out
+
+
+def latest_wallet_scores(session: Session, limit: int = 50, hide_bots: bool = True) -> list[WalletScore]:
+    sub = (
+        select(WalletScore.wallet_id, func.max(WalletScore.computed_at).label("mx"))
+        .group_by(WalletScore.wallet_id)
+        .subquery()
+    )
+    stmt = (
+        select(WalletScore)
+        .join(sub, (WalletScore.wallet_id == sub.c.wallet_id)
+              & (WalletScore.computed_at == sub.c.mx))
+        .order_by(WalletScore.alpha_score.desc())
+        .limit(limit * 3)
+    )
+    rows = list(session.scalars(stmt))
+    if hide_bots:
+        rows = [
+            r for r in rows
+            if not (session.get(Wallet, r.wallet_id) or Wallet()).is_bot
+        ]
+    return rows[:limit]
+
+
 def score_all(session: Session, min_calls: int = 1) -> list[ScoreResult]:
     now = utcnow()
     since = now - timedelta(days=settings.score_window_days)
     ids = session.scalars(
         select(Call.account_id)
-        .where(Call.called_at >= since)
+        .where(Call.account_id.isnot(None), Call.called_at >= since)
         .group_by(Call.account_id)
         .having(func.count(Call.id) >= min_calls)
     ).all()

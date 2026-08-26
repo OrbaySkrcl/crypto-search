@@ -10,7 +10,7 @@ from ..db.session import init_db_when_ready, warn_if_ephemeral_storage
 from .alerts import alert_fresh_calls, send_leaderboard
 from .enrich import run_enrich
 from .ingest import run_ingest
-from .jobs import claim_next, run_backfill_job
+from .jobs import claim_next, run_job
 from .score import blacklist_spammers, detect_clusters, run_scoring
 
 log = logging.getLogger(__name__)
@@ -37,10 +37,22 @@ async def _ingest_tick() -> None:
     await alert_fresh_calls(lookback_minutes=settings.ingest_interval_minutes * 3)
 
 
+def _score_everything() -> None:
+    from ..db.session import session_scope
+    from ..onchain.linker import run_linking
+    from ..scoring.engine import score_all_wallets
+
+    run_scoring()
+    if settings.onchain_enabled:
+        with session_scope() as s:
+            score_all_wallets(s)
+            run_linking(s)
+
+
 async def _score_tick() -> None:
     blacklist_spammers()
     detect_clusters()
-    await asyncio.get_running_loop().run_in_executor(None, run_scoring)
+    await asyncio.get_running_loop().run_in_executor(None, _score_everything)
 
 
 async def _job_worker(stop: asyncio.Event) -> None:
@@ -71,7 +83,7 @@ async def _job_worker(stop: asyncio.Event) -> None:
             continue
 
         try:
-            await run_backfill_job(job_id)
+            await run_job(job_id)
         except Exception:
             log.exception("is calistirilamadi: #%s", job_id)
         try:

@@ -114,6 +114,20 @@ class Settings(BaseSettings):
     cohort_max_window_hours: int = 72 # yeterli ornek yoksa pencere buraya kadar genisler
     cohort_min_size: int = 6          # bundan azsa cipa uygulanmaz
 
+    # --- zincir uzeri cuzdan avi ---
+    # Bu MC'nin ustunde alan "erken alici" sayilmaz
+    wallet_max_entry_mc_usd: float = 150_000.0
+    # Bu kadar farkli tokene dokunan cuzdan tarama botudur
+    wallet_bot_token_threshold: int = 150
+    wallet_min_buy_usd: float = 20.0
+    onchain_enabled: bool = True
+
+    # --- cuzdan <-> Twitter eslestirmesi (Asama 3) ---
+    # Cuzdan, tweet'ten en fazla bu kadar once almis olmali
+    link_max_lead_seconds: int = 7200        # 2 saat
+    link_min_tokens: int = 3                 # desen kac farkli tokende tekrarlanmali
+    link_min_confidence: float = 0.45
+
     # --- alinabilirlik ---
     max_slippage: float = 0.05        # %5 kaymayla ne kadar dolar girilebilir
     tradeable_floor_usd: float = 100.0    # bunun altinda pratikte girilemez

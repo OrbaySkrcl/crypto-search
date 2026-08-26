@@ -31,6 +31,9 @@ COMMANDS: list[tuple[str, str]] = [
     ("tara", "Bir hesabi gecmise donuk tara: /tara handle 60"),
     ("hesap", "Bir hesabin detayi: /hesap handle"),
     ("token", "Bir kontrat adresini incele: /token <CA>"),
+    ("cuzdan", "En iyi zincir uzeri cuzdanlar"),
+    ("eslesme", "Cuzdan <-> Twitter hesabi eslesmeleri"),
+    ("alicilar", "Bir tokenin erken alicilarini cikar: /alicilar <CA>"),
     ("isler", "Tarama isleri ve durumlari"),
     ("durum", "Sistem durumu"),
     ("yardim", "Butun komutlar"),
@@ -39,6 +42,8 @@ COMMANDS: list[tuple[str, str]] = [
 MAIN_KEYBOARD = [
     [{"text": "🏆 Liderlik", "callback_data": "top"},
      {"text": "⚡ Son cagrilar", "callback_data": "son"}],
+    [{"text": "👛 Cuzdanlar", "callback_data": "cuzdan"},
+     {"text": "🔗 Eslesmeler", "callback_data": "eslesme"}],
     [{"text": "📊 Durum", "callback_data": "durum"},
      {"text": "🔎 Isler", "callback_data": "isler"}],
     [{"text": "❓ Yardim", "callback_data": "yardim"}],
@@ -194,6 +199,76 @@ def _cmd_account(arg: str) -> str:
     return "\n".join(out)
 
 
+def _cmd_wallets(arg: str) -> str:
+    try:
+        limit = max(3, min(20, int(arg))) if arg else 10
+    except ValueError:
+        limit = 10
+    from ..web.queries import wallet_leaderboard
+
+    with session_scope() as s:
+        rows = wallet_leaderboard(s, limit=limit)
+    if not rows:
+        return (
+            "Henuz cuzdan profili yok.\n\n"
+            "Kosmus bir tokenin erken alicilarini cikarmak icin:\n"
+            "<code>/alicilar &lt;kontrat adresi&gt;</code>"
+        )
+    out = [f"👛 <b>EN IYI {len(rows)} CUZDAN</b>", ""]
+    for i, r in enumerate(rows, 1):
+        kisa = f"{r['address'][:6]}…{r['address'][-4:]}"
+        out.append(
+            f"{i}. {TIER_EMOJI.get(r['tier'], '⚪')} <code>{esc(kisa)}</code> — "
+            f"<b>{r['alpha_score']}</b>"
+            + (f"  ↔ @{esc(r['linked_handle'])}" if r.get("linked_handle") else "")
+        )
+        out.append(
+            f"    isabet {r['win_rate']*100:.0f}% ({r['n_wins']}/{r['n_evaluated']}) · "
+            f"medyan {fmt_mult(r['median_multiple'])} · "
+            f"piyasa ustu {r.get('median_excess') or 0:.2f}x"
+        )
+    return "\n".join(out)
+
+
+def _cmd_links(arg: str) -> str:
+    from ..web.queries import wallet_links
+
+    with session_scope() as s:
+        rows = wallet_links(s, limit=15)
+    if not rows:
+        return (
+            "Henuz eslesme yok.\n\n"
+            "Bir cuzdanin, bir hesabin tweetinden hemen once alma deseni en az "
+            f"{settings.link_min_tokens} farkli tokende tekrarlaninca burada gorunur."
+        )
+    out = ["🔗 <b>CUZDAN ↔ TWITTER ESLESMELERI</b>", ""]
+    for r in rows:
+        kisa = f"{r['wallet'][:6]}…{r['wallet'][-4:]}"
+        onc = r["median_lead_sec"]
+        onc_str = f"{onc}sn" if onc < 90 else f"{onc // 60}dk"
+        out.append(
+            f"<code>{esc(kisa)}</code> ↔ <a href=\"https://x.com/{esc(r['handle'] or '')}\">"
+            f"@{esc(r['handle'] or '?')}</a>  <b>{(r['confidence'] or 0)*100:.0f}%</b>"
+        )
+        out.append(f"    {r['token_count']} tokende, medyan {onc_str} ONCE almis")
+    out += ["", "<i>Bu cuzdanlar tweet atilmadan once aliyor.</i>"]
+    return "\n".join(out)
+
+
+def _cmd_buyers(arg: str, chat_id: str) -> str:
+    addr = (arg or "").strip().split()[0] if arg else ""
+    if not addr:
+        return (
+            "Kullanim: <code>/alicilar &lt;kontrat adresi&gt;</code>\n\n"
+            "Kosmus bir tokenin adresini ver; o tokeni ILK KIMLERIN aldigini "
+            "zincirden cikarayim."
+        )
+    job, msg = jobq.enqueue_token_profile(addr, source="telegram", notify_chat_id=chat_id)
+    if job is None:
+        return f"❌ {esc(msg)}"
+    return f"⏳ <b>{esc(msg)}</b>\n\nBitince haber verecegim. Durum: /isler"
+
+
 def _cmd_jobs() -> str:
     with session_scope() as s:
         rows = jobq.list_jobs(s, limit=10)
@@ -332,6 +407,12 @@ async def handle_command(cmd: str, arg: str, chat_id: str, http: HttpClient) -> 
         return (_cmd_scan(arg, chat_id), False)
     if cmd in ("hesap", "account"):
         return (_cmd_account(arg), False)
+    if cmd in ("cuzdan", "cuzdanlar", "wallets"):
+        return (_cmd_wallets(arg), True)
+    if cmd in ("eslesme", "eslesmeler", "links"):
+        return (_cmd_links(arg), True)
+    if cmd in ("alicilar", "buyers"):
+        return (_cmd_buyers(arg, chat_id), False)
     if cmd in ("isler", "jobs"):
         return (_cmd_jobs(), True)
     if cmd in ("durum", "status"):
