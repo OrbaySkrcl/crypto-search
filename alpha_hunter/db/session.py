@@ -1,12 +1,13 @@
 """Engine / session fabrikasi ve sema olusturma."""
 from __future__ import annotations
 
+import enum
 import logging
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -101,6 +102,77 @@ def warn_if_ephemeral_storage() -> bool:
     return False
 
 
+def _literal_default(col) -> str | None:
+    """Var olan satirlari doldurmak icin SQL sabiti uretir."""
+    d = getattr(col, "default", None)
+    if d is None or getattr(d, "is_callable", False):
+        return None
+    val = getattr(d, "arg", None)
+    if val is None or callable(val):
+        return None
+    if isinstance(val, enum.Enum):
+        # SQLAlchemy Enum sutunlari varsayilan olarak uyenin ADINI saklar
+        # ("TWEET"), degerini degil ("tweet"). Yanlisini yazmak, satiri geri
+        # okurken LookupError'a yol acar.
+        val = val.name
+    if isinstance(val, bool):
+        return "TRUE" if val else "FALSE"
+    if isinstance(val, (int, float)):
+        return str(val)
+    if isinstance(val, str):
+        escaped = val.replace("'", "''")
+        return f"'{escaped}'"
+    return None
+
+
+def sync_schema() -> list[str]:
+    """Var olan tablolara EKSIK SUTUNLARI ekler.
+
+    create_all() yalnizca eksik TABLOLARI yaratir; var olan bir tabloya yeni
+    sutun eklemez. Modele sutun eklendiginde eski veritabani oldugu gibi kalir
+    ve butun sorgular patlar -- panonun 500 vermesinin sebebi budur.
+
+    Yalnizca EKLEME yapar: hicbir sutun silinmez, tipi degistirilmez. Bu, veri
+    kaybi riski olmadan otomatik calistirilabilmesini saglar. Alembic gibi tam
+    bir gocmen sistemi degil ama bu projenin ihtiyaci olan tek sey buydu.
+    """
+    eng = get_engine()
+    insp = inspect(eng)
+    applied: list[str] = []
+    dialect = eng.dialect
+
+    with eng.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue                     # create_all halleder
+            mevcut = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in mevcut:
+                    continue
+                tip = col.type.compile(dialect)
+                ddl = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {tip}'
+                lit = _literal_default(col)
+                if lit is not None:
+                    ddl += f" DEFAULT {lit}"
+                elif not col.nullable:
+                    # Varsayilani olmayan zorunlu sutun eski satirlara
+                    # eklenemez; nullable olarak ekleyip gecelim.
+                    log.warning(
+                        "%s.%s zorunlu ama varsayilani yok, nullable eklendi",
+                        table.name, col.name,
+                    )
+                try:
+                    conn.execute(text(ddl))
+                    applied.append(f"{table.name}.{col.name}")
+                    log.info("sema guncellendi: +%s.%s", table.name, col.name)
+                except Exception as exc:
+                    log.error("sutun eklenemedi %s.%s: %s", table.name, col.name, exc)
+
+    if applied:
+        log.info("%d eksik sutun eklendi: %s", len(applied), ", ".join(applied))
+    return applied
+
+
 def init_db(drop: bool = False) -> None:
     eng = get_engine()
     with _init_lock:
@@ -115,6 +187,9 @@ def init_db(drop: bool = False) -> None:
             if "already exists" not in str(exc).lower():
                 raise
             log.debug("sema zaten kurulmus (es zamanli cagri): %s", exc)
+        # Yeni tablolar create_all ile geldi; var olan tablolara eksik
+        # sutunlari da ekle ki model ile veritabani ayni kalsin.
+        sync_schema()
     log.info("Sema hazir: %s", settings.database_url.split("@")[-1])
 
 

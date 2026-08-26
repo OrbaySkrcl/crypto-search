@@ -30,5 +30,5 @@ __all__ = [
     "TokenStatus", "Tweet", "utcnow",
     "db_status", "get_engine", "get_session_factory", "healthcheck", "init_db",
     "init_db_when_ready",
-    "session_scope", "wait_for_db",
+    "session_scope", "sync_schema", "wait_for_db",
 ]
