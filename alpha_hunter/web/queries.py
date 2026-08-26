@@ -222,6 +222,14 @@ def overview(session: Session) -> dict:
     for row in leaderboard(session, limit=10_000):
         tiers[row["tier"]] = tiers.get(row["tier"], 0) + 1
 
+    # Sema ile model arasinda kalan kisit farki. Bos degilse zincir uzeri
+    # eklemeler NotNullViolation verir; sessizce patlamaktansa panoda gorunsun.
+    try:
+        from ..db.session import nullability_mismatches
+        stale = [f"{t}.{c}" for t, c in nullability_mismatches()]
+    except Exception:                     # tanilama asla asil yaniti dusurmesin
+        stale = []
+
     return {
         "accounts": count(Account),
         "tweets": count(Tweet),
@@ -236,6 +244,7 @@ def overview(session: Session) -> dict:
         "last_call_at": last_call.isoformat() if last_call else None,
         "db_kind": "postgresql" if settings.is_postgres else "sqlite",
         "db_persistent": settings.is_postgres,
+        "schema_stale": stale,
         "chains": settings.chain_list,
         "window_days": settings.score_window_days,
         "win_multiple": settings.win_multiple,

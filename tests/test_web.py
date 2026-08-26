@@ -124,6 +124,34 @@ def test_overview_on_empty_db(client):
     assert d["chains"] == settings.chain_list
 
 
+def test_overview_reports_a_healthy_schema(client):
+    """Pano, semanin modelle uyusup uyusmadigini gostermeli.
+
+    Bos liste = sorun yok. Dolu olsaydi cuzdan taramasi NotNullViolation
+    verirdi ve kullanici sebebini goremeden hata alirdi.
+    """
+    assert client.get("/api/overview").json()["schema_stale"] == []
+
+
+def test_overview_surfaces_a_stale_schema(client, monkeypatch):
+    monkeypatch.setattr(
+        "alpha_hunter.db.session.nullability_mismatches",
+        lambda: [("calls", "account_id")],
+    )
+    assert client.get("/api/overview").json()["schema_stale"] == ["calls.account_id"]
+
+
+def test_a_broken_schema_probe_never_breaks_the_page(client, monkeypatch):
+    """Tanilama kodu asil yaniti dusurmemeli."""
+    def patla():
+        raise RuntimeError("inspect calismadi")
+
+    monkeypatch.setattr("alpha_hunter.db.session.nullability_mismatches", patla)
+    r = client.get("/api/overview")
+    assert r.status_code == 200
+    assert r.json()["schema_stale"] == []
+
+
 def test_leaderboard_returns_scored_account(seeded):
     rows = seeded.get("/api/leaderboard").json()
     assert len(rows) == 1

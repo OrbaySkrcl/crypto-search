@@ -125,6 +125,78 @@ def _literal_default(col) -> str | None:
     return None
 
 
+def _drop_not_null_ddl(table: str, column: str) -> str:
+    """PostgreSQL'de bir sutunun NOT NULL kisitini kaldiran ifade."""
+    return f'ALTER TABLE "{table}" ALTER COLUMN "{column}" DROP NOT NULL'
+
+
+def nullability_mismatches() -> list[tuple[str, str]]:
+    """Modelde nullable olan ama veritabaninda hala NOT NULL duran sutunlar.
+
+    Yalnizca TEK YON aranir: model "bos olabilir" derken veritabani "olamaz"
+    diyorsa. Tersi (model zorunlu, veritabani gevsek) bilerek yok sayilir --
+    sync_schema varsayilani olmayan zorunlu sutunlari kasitli olarak nullable
+    ekler; onlari sikilastirmak var olan satirlari gecersiz kilardi.
+    """
+    insp = inspect(get_engine())
+    bulunan: list[tuple[str, str]] = []
+    for table in Base.metadata.sorted_tables:
+        if not insp.has_table(table.name):
+            continue
+        db_cols = {c["name"]: c for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            db_col = db_cols.get(col.name)
+            if db_col is None or col.primary_key:
+                continue
+            if col.nullable and not db_col.get("nullable", True):
+                bulunan.append((table.name, col.name))
+    return bulunan
+
+
+def sync_nullability() -> list[str]:
+    """Modelde nullable olan ama veritabaninda NOT NULL kalan sutunlari gevsetir.
+
+    sync_schema yalnizca sutun EKLER; var olan bir sutunun kisitini degistirmez.
+    Cuzdan cagrilarinda Twitter hesabi olmadigi icin account_id ve tweet_id
+    modelde nullable yapildi -- ama eski tabloda hala NOT NULL oldugundan
+    zincir uzeri her ekleme NotNullViolation veriyordu.
+
+    Kisit GEVSETMEK veri kaybettirmez, o yuzden otomatik yapilabilir.
+    Siki hale getirmek tehlikelidir; asla yapilmaz.
+    """
+    eng = get_engine()
+    eksikler = nullability_mismatches()
+    if not eksikler:
+        return []
+
+    if not eng.dialect.name.startswith("postgres"):
+        # SQLite ALTER COLUMN bilmez; tabloyu bastan yazmak gerekir. Testler ve
+        # yerel kullanim init_db(drop=True) ile zaten temiz sema kurdugu icin
+        # burada uyarip gecmek yeterli -- sessizce yutmak degil.
+        for table, col in eksikler:
+            log.warning(
+                "%s.%s veritabaninda NOT NULL ama modelde nullable; "
+                "SQLite kisit gevsetemez, veritabanini yeniden olustur",
+                table, col,
+            )
+        return []
+
+    applied: list[str] = []
+    for table, col in eksikler:
+        try:
+            with eng.begin() as conn:
+                conn.execute(text(_drop_not_null_ddl(table, col)))
+            applied.append(f"{table}.{col}")
+            log.info("kisit gevsetildi: %s.%s NOT NULL kaldirildi", table, col)
+        except Exception as exc:
+            log.error("kisit gevsetilemedi %s.%s: %s", table, col, exc)
+
+    if applied:
+        log.info("%d sutunun NOT NULL kisiti kaldirildi: %s",
+                 len(applied), ", ".join(applied))
+    return applied
+
+
 def sync_schema() -> list[str]:
     """Var olan tablolara EKSIK SUTUNLARI ekler.
 
@@ -190,6 +262,9 @@ def init_db(drop: bool = False) -> None:
         # Yeni tablolar create_all ile geldi; var olan tablolara eksik
         # sutunlari da ekle ki model ile veritabani ayni kalsin.
         sync_schema()
+        # Modelde gevsetilmis kisitlari veritabaninda da gevset (cuzdan
+        # cagrilarinda account_id/tweet_id bos kalir).
+        sync_nullability()
     log.info("Sema hazir: %s", settings.database_url.split("@")[-1])
 
 

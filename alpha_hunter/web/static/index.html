@@ -680,6 +680,10 @@ async function viewStats(){
         ? '<span class="up">PostgreSQL — kalıcı</span>'
         : `<span class="down">${esc(o.db_kind||'?')} — GEÇİCİ, her deploy'da silinir</span>`)}
       ${row('en yüksek kat', o.best_multiple? o.best_multiple.toFixed(1)+'x' : '—')}
+      ${row('şema', (o.schema_stale&&o.schema_stale.length)
+        ? `<span class="down">ESKİ — ${esc(o.schema_stale.join(', '))} sütunları hâlâ zorunlu;
+           cüzdan taraması hata verir. Railway'de yeniden dağıt.</span>`
+        : '<span class="up">model ile uyumlu</span>')}
     </tbody></table></div></div>
 
     <div class="card" style="margin-top:14px">
