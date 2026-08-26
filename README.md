@@ -10,6 +10,22 @@ Piyasada "10x yaptı" diye ekran görüntüsü paylaşan yüzlerce hesap var. Bu
 
 ---
 
+## Bu depoda iki bağımsız sistem var
+
+| | **Alpha Hunter** (bu belge) | **Radar** → [`docs/RADAR.md`](docs/RADAR.md) |
+|---|---|---|
+| Neyi ölçer | Twitter hesaplarının CA çağrılarını | Zincir üstü cüzdanların alımlarını |
+| Girdi | Tweet akışı (Nitter / Apify / X API) | Havuz işlem akışı (GeckoTerminal) |
+| Ana sinyal | S/A tier hesap yeni CA paylaştı | **Konfluans:** N bağımsız akıllı cüzdan aynı tokende buluştu |
+| Ücretli anahtar | Apify / Birdeye önerilir | **Hiçbiri — aylık $0** |
+| Çalıştırma | `python -m alpha_hunter run` | `python -m radar run` |
+
+İkisi aynı veritabanını paylaşabilir (Radar tabloları `radar_` önekli) ama
+birbirine bağımlı değildir; Radar tek başına, tek bir Telegram token'ıyla
+ayağa kalkar.
+
+---
+
 ## Nasıl düşünüyor
 
 Her hesap 5 bağımsız eksende ölçülür. Tek bir eksende iyi olmak yeterli değildir.
