@@ -16,17 +16,20 @@ Her hesap 5 bağımsız eksende ölçülür. Tek bir eksende iyi olmak yeterli d
 
 | Eksen | Ağırlık | Ne ölçer | Kimi eler |
 |---|---|---|---|
-| **Güvenilirlik** | 0.32 | Wilson alt sınırı (ham isabet oranı değil) | 3 atışta 3 tutturan "şanslı" |
-| **Büyüklük** | 0.24 | Kazançların **medyanı** (ortalama değil) | 1 tane 100x'i olan, 40 çöpü olan |
-| **Giriş kalitesi** | 0.20 | Tweet anındaki MC + yakalanan yükseliş payı | Copycat / zirvede tweetleyen |
-| **Hayatta kalma** | 0.12 | Çağırdığı coinlerin rug oranı | Paralı promo hesabı |
-| **Özgünlük** | 0.12 | Aynı CA'yi kaçıncı sırada paylaştı | Echo / yankı hesabı |
+| **Güvenilirlik** | 0.28 | Wilson alt sınırı (ham isabet oranı değil) | 3 atışta 3 tutturan "şanslı" |
+| **Büyüklük** | 0.18 | Kazançların **medyanı** (ortalama değil) | 1 tane 100x'i olan, 40 çöpü olan |
+| **Piyasa üstü** | 0.16 | Aynı gün herkesin çağırdığının medyanına göre | Boğa piyasasında orada olan |
+| **Giriş kalitesi** | 0.18 | Giriş anındaki MC + yakalanan yükseliş payı | Copycat / zirvede tweetleyen |
+| **Hayatta kalma** | 0.10 | Çağırdığı coinlerin rug oranı | Paralı promo hesabı |
+| **Özgünlük** | 0.10 | Aynı CA'yi kaçıncı sırada paylaştı | Echo / yankı hesabı |
 
-Sonra iki çarpan uygulanır:
+Sonra üç çarpan uygulanır:
 
 - **Spray cezası** — günde 3'ten fazla tekil CA atmaya başlayınca skor düşmeye başlar,
   25/gün'de otomatik kara liste. *Günde 30 CA atan hesap insider değil, kumarbazdır.*
 - **Tutarlılık** — kazançlar tek bir haftaya sıkışmışsa cezalandırılır.
+- **Alınabilirlik** — o fiyattan makul kaymayla ne kadar dolar girilebilirdi.
+  $2.000 likiditede 50x görünür ama ~$52 girebilirsin; o kat kağıt üzerindedir.
 
 ### Üç kritik metrik
 
@@ -57,7 +60,13 @@ alt sınırını alır:
 Böylece "az ama isabetli sniper" doğru şekilde ödüllendirilir, "3 atışla şanslı"
 ödüllendirilmez.
 
-**3. Sürdürülen tepe — ATH kağıt üzerindedir**
+**3. Piyasa çıpası — 5x ne zaman beceridir?**
+
+Herkesin 6x yaptığı bir haftada 5x beceri değil, o dönemde piyasada bulunmaktır.
+Her çağrı **aynı zaman diliminde başkalarının çağırdığı** tokenların medyanıyla
+karşılaştırılır. Hesabın kendi çağrıları kohortuna asla girmez.
+
+**4. Sürdürülen tepe — ATH kağıt üzerindedir**
 
 30 saniye görülen fiyattan çıkamazsın. Sistem ATH yerine **en az 15 dakika
 korunan tepeyi** esas alır. Fitil pump'ları böyle elenir.
@@ -150,6 +159,44 @@ kimlerin hangi sırayla paylaştığı.
 
 ---
 
+## İki katman: tweet ve zincir
+
+Sistem aynı algoritmayı iki farklı sinyale uyguluyor.
+
+| | **Tweet katmanı** | **Zincir katmanı** |
+|---|---|---|
+| Çağrı ne demek | @x kontratı paylaştı | cüzdan W tokeni **aldı** |
+| Zamanlama | Hareket başladıktan sonra | **Hareketten önce** |
+| Veri | Apify (ücretli, kırılgan) | Birdeye (ucuz, eksiksiz) |
+| Giriş fiyatı | OHLCV'den tahmin | **Zincirdeki işlem — kesin** |
+
+Neden ikinci katman daha değerli: **alfası olan insan önce alır, sonra tweetler.**
+Tweet çıkış likiditesidir. Bir CA Twitter'a düştüğünde zincirdeki hareket çoktan
+başlamıştır.
+
+### Ve ikisinin kesişimi
+
+Bir cüzdan sürekli @x'in tweetinden **hemen önce** alıyorsa, @x ya o cüzdanın
+sahibidir ya da ondan besleniyordur. Tek tokende tesadüf olabilir; aynı desen
+beş tokende tekrarlanıyorsa değil.
+
+Sistem bunu otomatik buluyor ve panonun **Cüzdanlar** sekmesinde gösteriyor:
+
+```
+Inside…11Aa  ↔  @sinyalci   %83 güven   6 tokende   medyan 6dk önce
+```
+
+Bu artık korelasyon değil, gerçek insider tespiti.
+
+### Bot elemesi
+
+Ham kazanma oranında botlar üste çıkar. İki filtre var: medyan giriş gecikmesi
+20 saniyenin altındaysa **sniper bot**, 150'den fazla farklı tokene dokunduysa
+**tarama botu**. İşaretlenir, skoru sıfırlanır, sıralamadan çıkarılır.
+50x kazanan bir bot bile 0.0 alır.
+
+---
+
 ## Web panosu
 
 Terminal bilmene gerek yok — tarayıcıdan bak.
@@ -190,6 +237,9 @@ Bot hem alarm gönderir hem komut alır. Telegram'da **/** yazınca kısayol men
 | `/son [saat]` | Son çağrılar |
 | `/hesap hesapadi` | Bir hesabın detayı ve son çağrıları |
 | `/token <CA>` | Kontratı inceler + kimlerin hangi sırada paylaştığını gösterir |
+| `/cuzdan` | En iyi zincir üstü cüzdanlar |
+| `/eslesme` | Cüzdan ↔ Twitter hesabı eşleşmeleri |
+| `/alicilar <CA>` | Bir tokenin erken alıcılarını çıkarır |
 | `/isler` | Tarama işlerinin durumu |
 | `/durum` | Sistem durumu |
 | `/yardim` | Bütün komutlar |
@@ -318,7 +368,7 @@ Bu bir araştırma aracıdır, yatırım tavsiyesi değildir.
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q          # 123 test
+pytest -q          # 215 test
 ruff check .
 ```
 

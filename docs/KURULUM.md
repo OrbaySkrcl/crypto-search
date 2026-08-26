@@ -322,6 +322,23 @@ kısayol menüsü açılır. `/start` yazarsan butonlu bir menü de gelir.
 > Bot yalnızca senin sohbetinden komut kabul eder. Botun adını bulan başkası
 > kullanamaz — güvenlik sınırı `TELEGRAM_CHAT_ID`.
 
+### Cüzdan avı (en değerli kısım)
+
+Panoda **Hesap tara** sekmesinde ikinci bir kutu var: **Token erken alıcıları**.
+Zaten koşmuş bir tokenin kontrat adresini gir; sistem o tokeni *ilk kimlerin
+aldığını* zincirden çıkarır, cüzdanları puanlar ve **Cüzdanlar** sekmesine ekler.
+
+Neden bu daha değerli: **alfası olan insan önce alır, sonra tweetler.** Tweet çıkış
+likiditesidir. Cüzdan verisi tanım gereği daha erkendir, üstelik Twitter'dan çok
+daha ucuz ve güvenilir.
+
+Yeterince token profilledikten sonra sistem **cüzdan ↔ Twitter eşleşmelerini**
+kendi buluyor: bir cüzdan sürekli bir hesabın tweetinden hemen önce alıyorsa,
+o hesap muhtemelen o cüzdanı kullanıyor. Telegram'dan `/eslesme` ile de görürsün.
+
+Botlar otomatik ayıklanıyor — havuz açıldıktan 20 saniye içinde giren bir cüzdan
+insan değil sniper botudur, listeden çıkarılır.
+
 ### Panodan hesap taratmak
 
 Panoda **Hesap tara** sekmesi var: hesap adını ve kaç gün geriye bakılacağını
