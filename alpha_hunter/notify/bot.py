@@ -177,6 +177,8 @@ def _cmd_account(arg: str) -> str:
             f"{TIER_EMOJI.get(tier, '⚪')} alfa <b>{sc['alpha_score']}</b> ({tier})",
             f"isabet {sc['win_rate']*100:.0f}% ({sc['n_wins']}/{sc['n_evaluated']}) · "
             f"medyan {fmt_mult(sc['median_multiple'])}",
+            f"piyasa ustu {sc.get('median_excess') or 0:.2f}x · "
+            f"girilebilirlik {sc.get('tradeability', 0)*100:.0f}",
             f"giris kalitesi {sc['entry_quality']*100:.0f} · ozgunluk {sc['originality']*100:.0f} · "
             f"{sc['calls_per_day']:.1f} cagri/gun",
         ]

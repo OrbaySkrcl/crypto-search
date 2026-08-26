@@ -102,11 +102,22 @@ class Settings(BaseSettings):
     mc_earliness_low_usd: float = 15_000.0
     mc_earliness_high_usd: float = 10_000_000.0
 
-    w_reliability: float = 0.32
-    w_magnitude: float = 0.24
-    w_entry_quality: float = 0.20
-    w_survivorship: float = 0.12
-    w_originality: float = 0.12
+    w_reliability: float = 0.28
+    w_magnitude: float = 0.18
+    w_market_edge: float = 0.16      # kohortu ne kadar gecti
+    w_entry_quality: float = 0.18
+    w_survivorship: float = 0.10
+    w_originality: float = 0.10
+
+    # --- piyasa cipasi ---
+    cohort_window_hours: int = 6      # ayni gun/saat cagrilan diger tokenlar
+    cohort_max_window_hours: int = 72 # yeterli ornek yoksa pencere buraya kadar genisler
+    cohort_min_size: int = 6          # bundan azsa cipa uygulanmaz
+
+    # --- alinabilirlik ---
+    max_slippage: float = 0.05        # %5 kaymayla ne kadar dolar girilebilir
+    tradeable_floor_usd: float = 100.0    # bunun altinda pratikte girilemez
+    tradeable_target_usd: float = 10_000.0  # bu seviyede tam puan
 
     # -------------------------------------------------------------- alarmlar
     telegram_bot_token: str | None = None

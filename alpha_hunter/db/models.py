@@ -287,6 +287,17 @@ class Call(Base):
     mc_earliness: Mapped[float | None] = mapped_column(Float)
     entry_quality: Mapped[float | None] = mapped_column(Float)   # ikisinin bilesigi
 
+    # --- Piyasa cipasi: ayni gun herkesin cagirdigi seylerin medyani ------ #
+    # 5x, herkesin 6x yaptigi bir gunde beceri degildir.
+    cohort_median_multiple: Mapped[float | None] = mapped_column(Float)
+    cohort_size: Mapped[int | None] = mapped_column(Integer)
+    excess_multiple: Mapped[float | None] = mapped_column(Float)  # kat / kohort medyani
+
+    # --- Alinabilirlik: kagit uzerindeki kat degil, GERCEKTEN girilebilir mi #
+    # $2k likiditede 50x gorunur ama $500 alirken fiyati %30 kaydirirsin.
+    tradeable_usd: Mapped[float | None] = mapped_column(Float)
+    tradeability: Mapped[float | None] = mapped_column(Float)     # 0..1
+
     # --- KURAL: echo / copycat -------------------------------------------- #
     caller_rank: Mapped[int | None] = mapped_column(Integer)     # 1 = bildigimiz ilk cagiran
     echo_delay_sec: Mapped[int | None] = mapped_column(Integer)  # ilk cagriya gore gecikme
@@ -340,6 +351,9 @@ class AccountScore(Base):
     avg_entry_mc_usd: Mapped[float | None] = mapped_column(Float)
 
     magnitude: Mapped[float] = mapped_column(Float, default=0.0)
+    market_edge: Mapped[float] = mapped_column(Float, default=0.0)
+    median_excess: Mapped[float] = mapped_column(Float, default=0.0)
+    tradeability: Mapped[float] = mapped_column(Float, default=0.0)
     entry_quality: Mapped[float] = mapped_column(Float, default=0.0)
     survivorship: Mapped[float] = mapped_column(Float, default=0.0)
     originality: Mapped[float] = mapped_column(Float, default=0.0)

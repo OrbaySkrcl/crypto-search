@@ -217,18 +217,24 @@ def composite_alpha(
     spray: float,
     consist: float,
     data_conf: float,
+    market_edge: float = 0.0,
+    tradeable: float = 1.0,
 ) -> float:
     raw = (
         weights["reliability"] * clamp(reliability)
         + weights["magnitude"] * clamp(magnitude)
+        + weights.get("market_edge", 0.0) * clamp(market_edge)
         + weights["entry_quality"] * clamp(entry_q)
         + weights["survivorship"] * clamp(survivorship)
         + weights["originality"] * clamp(original)
     )
-    # Tutarlilik ve veri guveni carpan olarak uygulanir (tabani var, sifirlamaz)
+    # Carpanlarin hepsinin tabani var: cezalandirir ama sifirlamaz.
     consist_factor = 0.75 + 0.25 * clamp(consist)
     conf_factor = 0.60 + 0.40 * clamp(data_conf)
-    return clamp(raw * spray * consist_factor * conf_factor) * 100.0
+    # Yalnizca girilemeyecek kadar ince tokenlar cagiran hesap, kagit uzerinde
+    # ne kadar iyi gorunurse gorunsun kullanilabilir degildir.
+    trade_factor = 0.55 + 0.45 * clamp(tradeable)
+    return clamp(raw * spray * consist_factor * conf_factor * trade_factor) * 100.0
 
 
 def tier_for(score: float, n_evaluated: int, min_calls: int) -> str:

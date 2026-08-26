@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db.models import Account, AccountScore, Call, CallOutcome, Tier, utcnow
+from . import market as MK
 from . import metrics as M
 
 log = logging.getLogger(__name__)
@@ -32,6 +33,9 @@ class ScoreResult:
     p90_multiple: float = 0.0
     avg_entry_mc: float | None = None
     magnitude: float = 0.0
+    market_edge: float = 0.0
+    median_excess: float = 0.0
+    tradeability: float = 0.0
     entry_quality: float = 0.0
     survivorship: float = 0.0
     originality: float = 0.0
@@ -45,6 +49,7 @@ class ScoreResult:
 WEIGHTS = {
     "reliability": settings.w_reliability,
     "magnitude": settings.w_magnitude,
+    "market_edge": settings.w_market_edge,
     "entry_quality": settings.w_entry_quality,
     "survivorship": settings.w_survivorship,
     "originality": settings.w_originality,
@@ -112,6 +117,30 @@ def score_account(session: Session, account: Account, now: datetime | None = Non
     res.p90_multiple = M.weighted_quantile(mults, weights, 0.90)
     res.magnitude = M.magnitude_score(mults, weights, settings.moon_multiple)
 
+    # --- Piyasa cipasi: kohortu gecti mi? --------------------------------- #
+    ex_pairs = [
+        (c.excess_multiple, w)
+        for c, w in zip(scored, weights, strict=True)
+        if c.excess_multiple is not None
+    ]
+    if ex_pairs:
+        res.median_excess = M.weighted_median(
+            [v for v, _ in ex_pairs], [w for _, w in ex_pairs]
+        )
+        res.market_edge = MK.market_edge_score(
+            [v for v, _ in ex_pairs], [w for _, w in ex_pairs]
+        )
+
+    # --- Alinabilirlik: o fiyattan gercekten girilebilir miydi? ------------ #
+    tr_pairs = [
+        (c.tradeability, w)
+        for c, w in zip(scored, weights, strict=True)
+        if c.tradeability is not None
+    ]
+    if tr_pairs:
+        tot = sum(w for _, w in tr_pairs) or 1.0
+        res.tradeability = sum(v * w for v, w in tr_pairs) / tot
+
     # --- Giris kalitesi: KURAL 1 ------------------------------------------ #
     eq_pairs = [(c.entry_quality, w) for c, w in zip(scored, weights, strict=True) if c.entry_quality is not None]
     if eq_pairs:
@@ -141,6 +170,7 @@ def score_account(session: Session, account: Account, now: datetime | None = Non
     res.alpha_score = M.composite_alpha(
         reliability=res.wilson_lb,
         magnitude=res.magnitude,
+        market_edge=res.market_edge,
         entry_q=res.entry_quality,
         survivorship=res.survivorship,
         original=res.originality,
@@ -148,6 +178,7 @@ def score_account(session: Session, account: Account, now: datetime | None = Non
         spray=res.spray_penalty,
         consist=res.consistency,
         data_conf=res.data_confidence,
+        tradeable=res.tradeability,
     )
     res.tier = M.tier_for(res.alpha_score, res.n_evaluated, settings.min_calls_for_rating)
 
@@ -158,6 +189,9 @@ def score_account(session: Session, account: Account, now: datetime | None = Non
     res.breakdown = {
         "reliability_wilson": round(res.wilson_lb, 4),
         "magnitude": round(res.magnitude, 4),
+        "market_edge": round(res.market_edge, 4),
+        "median_excess": round(res.median_excess, 3),
+        "tradeability": round(res.tradeability, 4),
         "entry_quality": round(res.entry_quality, 4),
         "survivorship": round(res.survivorship, 4),
         "originality": round(res.originality, 4),
@@ -187,6 +221,9 @@ def persist_score(session: Session, res: ScoreResult, now: datetime | None = Non
         p90_multiple=res.p90_multiple,
         avg_entry_mc_usd=res.avg_entry_mc,
         magnitude=res.magnitude,
+        market_edge=res.market_edge,
+        median_excess=res.median_excess,
+        tradeability=res.tradeability,
         entry_quality=res.entry_quality,
         survivorship=res.survivorship,
         originality=res.originality,

@@ -208,8 +208,9 @@ async function viewBoard(){
   const body = rows.length ? `<div class="scroll"><table>
     <thead><tr>
       <th>#</th><th>hesap</th><th>tier</th><th class="num">alfa</th>
-      <th class="num">isabet</th><th class="num">medyan</th><th class="num">ort. giriş</th>
-      <th class="num">giriş kal.</th><th class="num">özgünlük</th><th class="num">rug yok</th>
+      <th class="num">isabet</th><th class="num">medyan</th><th class="num">piyasa üstü</th>
+      <th class="num">girilebilir</th><th class="num">ort. giriş</th>
+      <th class="num">giriş kal.</th><th class="num">özgünlük</th>
       <th class="num">çağrı/gün</th><th></th>
     </tr></thead><tbody>${rows.map((r,i)=>`
       <tr>
@@ -219,10 +220,12 @@ async function viewBoard(){
         <td class="num"><b>${r.alpha_score.toFixed(1)}</b></td>
         <td class="num">${pct(r.win_rate)} <span class="dim">(${r.n_wins}/${r.n_evaluated})</span></td>
         <td class="num ${mcls(r.median_multiple)}">${fmtX(r.median_multiple)}</td>
+        <td class="num ${(r.median_excess||0)>=1.5?'up':((r.median_excess||0)<1?'down':'dim')}">${
+          r.median_excess ? r.median_excess.toFixed(2)+'x' : '—'}</td>
+        <td class="num">${(r.tradeability*100).toFixed(0)}${bar(r.tradeability)}</td>
         <td class="num">${fmtUsd(r.avg_entry_mc)}</td>
         <td class="num">${(r.entry_quality*100).toFixed(0)}${bar(r.entry_quality)}</td>
         <td class="num">${(r.originality*100).toFixed(0)}${bar(r.originality)}</td>
-        <td class="num">${(r.survivorship*100).toFixed(0)}${bar(r.survivorship)}</td>
         <td class="num ${r.calls_per_day>5?'down':''}">${r.calls_per_day.toFixed(1)}</td>
         <td>${r.blacklisted?`<span class="flag" title="${esc(r.blacklist_reason||'kara liste')}">⛔</span>`:''}
             ${r.clustered?'<span class="flag" title="Koordineli hesap kümesi — bu hesap başkalarıyla aynı coinleri aynı dakikalarda paylaşıyor. Bağımsız sinyal sayılmaz.">⚠</span>':''}</td>
@@ -248,10 +251,11 @@ async function viewBoard(){
       <dt>tier</dt><dd>S ≥80 · A ≥65 · B ≥50 · C ≥35 · D ≥20 · F &lt;20. UNRATED = henüz yeterli çağrı yok.</dd>
       <dt>isabet</dt><dd>Kaç çağrısı ${'"'}başarılı${'"'} eşiğini geçti. Parantez içi: kazanan / değerlendirilen.</dd>
       <dt>medyan</dt><dd>Tipik çağrısının kaç kat yaptığı. Ortalama değil medyan — tek bir şanslı 100x tabloyu bozmasın diye.</dd>
+      <dt>piyasa üstü</dt><dd><b>En önemli sütun.</b> Aynı günlerde başkalarının çağırdığı coinlerin medyanına göre kaç kat iyi. 1.00x = piyasayla aynı, yani beceri değil o dönemde orada olmak. 2x+ = gerçek fark.</dd>
+      <dt>girilebilir</dt><dd>O fiyattan makul kaymayla ne kadar dolar girilebilirdi. Düşükse kağıt üzerindeki kat gerçek değil — $2k likiditede 50x görünür ama $50 alırken fiyatı kaydırırsın.</dd>
       <dt>ort. giriş</dt><dd>Tweetlediği andaki ortalama piyasa değeri. Düşük olması iyi: erken giriyor demek.</dd>
       <dt>giriş kal.</dt><dd>Coin&#39;in toplam yükselişinin ne kadarını yakaladı. Düşükse zirveye yakın tweetliyor = copycat.</dd>
       <dt>özgünlük</dt><dd>Aynı kontratı kaçıncı sırada paylaştı. 100 = ilk keşfeden. Düşükse başkasını kopyalıyor.</dd>
-      <dt>rug yok</dt><dd>Çağırdığı coinlerin ne kadarı likidite çekilerek ölmedi. Düşükse paralı promo şüphesi.</dd>
       <dt>çağrı/gün</dt><dd>Günde kaç farklı kontrat paylaşıyor. 3&#39;ten sonra ceza başlar — günde 30 CA atan insider değil kumarbazdır.</dd>
       <dt>⚠ / ⛔</dt><dd>⚠ koordineli hesap kümesi · ⛔ spam nedeniyle kara listede</dd>
     </dl></div>`;
@@ -334,6 +338,8 @@ async function openAcc(handle){
          ['medyan kat', fmtX(s.median_multiple)],
          ['giriş kalitesi', (s.entry_quality*100).toFixed(0)],
          ['özgünlük', (s.originality*100).toFixed(0)],
+         ['piyasa üstü', s.median_excess ? s.median_excess.toFixed(2)+'x' : '—'],
+         ['girilebilirlik', (s.tradeability*100).toFixed(0)],
          ['wilson alt sınırı', s.wilson_lb.toFixed(3)],
          ['çağrı/gün', s.calls_per_day.toFixed(1)],
          ['spray çarpanı', s.spray_penalty.toFixed(2)]]
@@ -354,7 +360,8 @@ async function openAcc(handle){
       ${head}
       <div class="scroll"><table>
         <thead><tr><th>zaman</th><th>coin</th><th class="num">giriş MC</th><th class="num">ATH</th>
-          <th class="num">gerçekçi</th><th class="num">giriş kal.</th><th class="num">capture</th>
+          <th class="num">gerçekçi</th><th class="num">piyasa üstü</th>
+          <th class="num">girilebilir</th><th class="num">giriş kal.</th>
           <th class="num">sıra</th><th class="num">veri güveni</th><th>sonuç</th><th></th></tr></thead>
         <tbody>${d.calls.map(c=>`<tr>
           <td class="dim">${new Date(c.called_at).toLocaleString('tr',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
@@ -363,8 +370,10 @@ async function openAcc(handle){
           <td class="num">${fmtUsd(c.entry_mc)}</td>
           <td class="num ${mcls(c.max_multiple)}">${fmtX(c.max_multiple)}</td>
           <td class="num ${mcls(c.sustained_multiple)}">${fmtX(c.sustained_multiple)}</td>
+          <td class="num ${(c.excess_multiple||0)>=1.5?'up':((c.excess_multiple||0)<1?'down':'dim')}">${
+            c.excess_multiple==null?'—':c.excess_multiple.toFixed(2)+'x'}</td>
+          <td class="num">${c.tradeable_usd==null?'—':fmtUsd(c.tradeable_usd)}</td>
           <td class="num">${c.entry_quality==null?'—':(c.entry_quality*100).toFixed(0)}</td>
-          <td class="num">${c.run_capture==null?'—':(c.run_capture*100).toFixed(0)}</td>
           <td class="num">${c.caller_rank?'#'+c.caller_rank:'—'}</td>
           <td class="num dim">${(c.entry_confidence*100).toFixed(0)}</td>
           <td><span class="oc ${c.outcome}">${

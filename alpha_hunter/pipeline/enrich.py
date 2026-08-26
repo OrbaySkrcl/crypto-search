@@ -24,6 +24,7 @@ from ..db.session import session_scope
 from ..http import HttpClient
 from ..oracle.resolver import PriceOracle
 from ..oracle.types import Candle, PriceHistory
+from ..scoring import market as MK
 from ..scoring import metrics as M
 from ..security.checks import SecurityChecker, detect_rug
 from . import repo
@@ -190,6 +191,7 @@ async def run_enrich(batch_size: int = 60, security_budget: int = 25) -> dict:
                         continue
 
                     _apply_evaluation(call, ev)
+                    _apply_market_context(s, call)
                     outcome, reason = repo.classify_outcome(call, token)
                     call.outcome = outcome
                     call.invalid_reason = reason
@@ -208,6 +210,25 @@ async def run_enrich(batch_size: int = 60, security_budget: int = 25) -> dict:
 
     log.info("enrich bitti: %s", stats)
     return stats
+
+
+def _apply_market_context(session, call: Call) -> None:
+    """Piyasa cipasi ve alinabilirlik.
+
+    Bunlar kagit uzerindeki kati gercege baglayan iki olcu: o gun herkes ne
+    yapti, ve o fiyattan ne kadar dolar girilebilirdi.
+    """
+    own = call.sustained_multiple or call.max_multiple
+    median, n = MK.cohort_median_multiple(
+        session, call.chain, repo._aware(call.called_at),
+        exclude_account_id=call.account_id, exclude_call_id=call.id,
+    )
+    call.cohort_median_multiple = median
+    call.cohort_size = n
+    call.excess_multiple = MK.excess_multiple(own, median)
+
+    call.tradeable_usd = MK.tradeable_usd(call.entry_liquidity_usd)
+    call.tradeability = MK.tradeability(call.tradeable_usd)
 
 
 def _apply_evaluation(call: Call, ev) -> None:
